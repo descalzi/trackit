@@ -1,0 +1,37 @@
+services:
+  trackit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trackit
+    ports:
+      - "8084:8080"
+    volumes:
+      - trackit-data:/app/data
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=sqlite:///./data/trackit.db
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - SECRET_KEY=${SECRET_KEY}
+      - SHIP24_API_KEY=${SHIP24_API_KEY}
+      - ALLOWED_ORIGINS=https://chunkyboy.reindeer-great.ts.net,http://localhost:8084
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      # Router for path-based routing at /trackit
+      - "traefik.http.routers.trackit.rule=Host(`chunkyboy.reindeer-great.ts.net`) && PathPrefix(`/trackit`)"
+      - "traefik.http.routers.trackit.entrypoints=web,websecure"
+      - "traefik.http.routers.trackit.tls=true"
+      # Service configuration
+      - "traefik.http.services.trackit.loadbalancer.server.port=8080"
+      - "traefik.docker.network=traefik-network"
+
+volumes:
+  trackit-data:
+
+networks:
+  traefik-network:
+    external: true
