@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Box, Container, Typography, Paper, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import { Box, Container, Typography, Paper } from '@mui/material';
 import { GoogleLogin } from '@react-oauth/google';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../api/client';
+import ErrorDialog from '../components/ErrorDialog';
 import logoImage from '../assets/logo.png';
 
 const LoginPage: React.FC = () => {
@@ -82,24 +83,12 @@ const LoginPage: React.FC = () => {
         </Paper>
       </Box>
 
-      <Dialog
+      <ErrorDialog
         open={errorDialog.open}
+        title="Login Error"
+        message={errorDialog.message}
         onClose={handleCloseErrorDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Login Error</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ whiteSpace: 'pre-line' }}>
-            {errorDialog.message}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseErrorDialog} variant="contained">
-            OK
-          </Button>
-        </DialogActions>
-      </Dialog>
+      />
     </Container>
   );
 };
