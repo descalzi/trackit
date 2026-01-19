@@ -103,7 +103,8 @@ class DBTrackingEvent(Base):
     location_id = Column(String, ForeignKey("locations.location_string"), nullable=True)  # FK to locations
     timestamp = Column(DateTime, nullable=False, index=True)  # Event timestamp from courier
     description = Column(Text, nullable=True)  # Event description
-    courier_event_code = Column(String, nullable=True)  # Raw courier event code
+    courier_event_code = Column(String, nullable=True)  # Raw courier event code (status code)
+    courier_code = Column(String, nullable=True)  # Courier handling this event (e.g., "usps", "evri")
     created_at = Column(DateTime, default=datetime.now)  # When we fetched this event
 
     # Relationships

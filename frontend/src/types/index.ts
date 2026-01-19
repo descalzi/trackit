@@ -68,6 +68,7 @@ export interface TrackingEvent {
   timestamp: string;
   description?: string;
   courier_event_code?: string;
+  courier_code?: string;
   created_at: string;
 }
 
@@ -77,6 +78,7 @@ export interface TrackingEventData {
   timestamp: string;
   description?: string;
   courier_event_code?: string;
+  courier_code?: string;
 }
 
 // Tracking lookup types

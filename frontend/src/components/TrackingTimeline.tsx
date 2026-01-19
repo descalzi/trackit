@@ -122,10 +122,6 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
   return (
     <Timeline position="right" sx={{ [`& .${timelineOppositeContentClasses.root}`]: { flex: 0.2 }, }}>
       {events.map((event, index) => {
-        // Check if courier changed from previous event
-        const prevEvent = index < events.length - 1 ? events[index + 1] : null;
-        const courierChanged = prevEvent && event.courier_event_code !== prevEvent.courier_event_code;
-
         return (
         <TimelineItem key={event.id}>
           <TimelineOppositeContent>
@@ -170,15 +166,14 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
                 </Typography>
               )}
 
-              {event.courier_event_code && (() => {
-                const courier = getCourierByCode(event.courier_event_code);
+              {event.courier_code && (() => {
+                const courier = getCourierByCode(event.courier_code);
                 return (
                   <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <Chip
-                      label={courier?.courierName || event.courier_event_code}
+                      label={courier?.courierName || event.courier_code}
                       size="small"
                       variant="outlined"
-                      color={courierChanged ? 'primary' : 'default'}
                       sx={{ fontSize: '0.7rem', height: '20px' }}
                       avatar={
                         courier?.website ? (
@@ -193,11 +188,6 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
                         ) : undefined
                       }
                     />
-                    {courierChanged && (
-                      <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
-                        Courier changed
-                      </Typography>
-                    )}
                   </Box>
                 );
               })()}

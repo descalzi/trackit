@@ -202,7 +202,8 @@ async def refresh_tracking(
                     location_id=location_str if location_str else None,  # Link to location
                     timestamp=event_data["timestamp"],
                     description=event_data.get("description"),
-                    courier_event_code=event_data.get("courier_event_code")
+                    courier_event_code=event_data.get("courier_event_code"),
+                    courier_code=event_data.get("courier_code")
                 )
                 db.add(db_event)
             else:

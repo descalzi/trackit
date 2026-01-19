@@ -77,6 +77,7 @@ class TrackingEventData(BaseModel):
     timestamp: datetime
     description: Optional[str] = None
     courier_event_code: Optional[str] = None
+    courier_code: Optional[str] = None
 
 
 class TrackingEvent(TrackingEventData):

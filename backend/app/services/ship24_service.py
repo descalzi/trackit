@@ -320,12 +320,16 @@ class Ship24Service:
             else:
                 location = ""
 
+            # Get courier code for this event (packages can be handed off between couriers)
+            event_courier = event.get("courierCode", "")
+
             events.append({
                 "status": self._normalize_status(event.get("statusMilestone", "")),
                 "location": location,
                 "timestamp": timestamp,
                 "description": event.get("status", ""),  # Ship24 uses "status" field for description
-                "courier_event_code": event.get("statusCode", "")  # Ship24 uses "statusCode" field
+                "courier_event_code": event.get("statusCode", ""),  # Ship24 uses "statusCode" field
+                "courier_code": event_courier  # Actual courier handling this event
             })
 
         # Sort by timestamp (newest first)
