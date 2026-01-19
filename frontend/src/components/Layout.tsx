@@ -10,11 +10,12 @@ import {
   MenuItem,
   Container,
   Avatar,
+  Tooltip,
 } from '@mui/material';
-import { Archive } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import logoImage from '../assets/logo.png';
 import dashboardImage from '../assets/dashboard.png';
+import archiveImage from '../assets/archive.png';
 
 const Layout: React.FC = () => {
   const navigate = useNavigate();
@@ -39,7 +40,16 @@ const Layout: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              flexGrow: 1,
+              cursor: 'pointer'
+            }}
+            onClick={() => navigate('/')}
+          >
             <img
               src={logoImage}
               alt="TrackIt Logo"
@@ -50,17 +60,25 @@ const Layout: React.FC = () => {
             </Typography>
           </Box>
 
-          <IconButton color="inherit" onClick={() => navigate('/')}>
-            <img
-              src={dashboardImage}
-              alt="Dashboard"
-              style={{ height: '24px', width: '24px', objectFit: 'contain' }}
-            />
-          </IconButton>
+          <Tooltip title="Dashboard">
+            <IconButton color="inherit" onClick={() => navigate('/')}>
+              <img
+                src={dashboardImage}
+                alt="Dashboard"
+                style={{ height: '24px', width: '24px', objectFit: 'contain' }}
+              />
+            </IconButton>
+          </Tooltip>
 
-          <IconButton color="inherit" onClick={() => navigate('/archive')}>
-            <Archive />
-          </IconButton>
+          <Tooltip title="Archive">
+            <IconButton color="inherit" onClick={() => navigate('/archive')}>
+              <img
+                src={archiveImage}
+                alt="Archive"
+                style={{ height: '24px', width: '24px', objectFit: 'contain' }}
+              />
+            </IconButton>
+          </Tooltip>
 
           <IconButton
             size="large"

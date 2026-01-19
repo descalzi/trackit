@@ -7,7 +7,8 @@ import {
   PackageUpdate,
   TrackingEvent,
   TrackingLookupRequest,
-  TrackingLookupResponse
+  TrackingLookupResponse,
+  Courier
 } from '../types';
 import { getAuthHeader } from '../utils/auth';
 
@@ -194,6 +195,13 @@ export const apiClient = {
         method: 'POST',
         headers: getAuthHeader(),
       });
+    },
+
+    /**
+     * Get list of all supported couriers
+     */
+    getCouriers: (): Promise<{ couriers: Courier[] }> => {
+      return apiFetch<{ couriers: Courier[] }>('/api/tracking/couriers');
     },
   },
 };

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus
 from app.models import TrackingLookupRequest, TrackingLookupResponse, Package, TrackingEventData
@@ -9,6 +9,33 @@ from app.services.ship24_service import Ship24Service, Ship24Error, Ship24RateLi
 import uuid
 
 router = APIRouter()
+
+# In-memory cache for couriers (refreshed periodically)
+_couriers_cache: Optional[List[Dict]] = None
+
+
+@router.get("/couriers")
+async def get_couriers():
+    """
+    Get list of all supported couriers from Ship24
+    Results are cached to avoid excessive API calls
+    """
+    global _couriers_cache
+
+    # Return cached data if available
+    if _couriers_cache is not None:
+        return {"couriers": _couriers_cache}
+
+    # Fetch from Ship24 if not cached
+    ship24 = Ship24Service()
+    try:
+        couriers = await ship24.get_couriers()
+        _couriers_cache = couriers
+        return {"couriers": couriers}
+    except Ship24RateLimitError:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+    except Ship24Error as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch couriers: {str(e)}")
 
 
 @router.post("/lookup", response_model=TrackingLookupResponse)
@@ -89,11 +116,18 @@ async def refresh_tracking(
         db_package.last_location = result["location"]
         db_package.last_updated = datetime.now()
 
+        # Update shipment details
+        db_package.origin_country = result.get("origin_country")
+        db_package.destination_country = result.get("destination_country")
+        db_package.estimated_delivery = result.get("estimated_delivery")
+        db_package.detected_courier = result.get("courier")  # Store the detected courier code
+
         # Update delivered_at if status is delivered
         if result["status"] == PackageStatus.DELIVERED and not db_package.delivered_at:
             db_package.delivered_at = datetime.now()
 
         # Save new events (deduplicate by timestamp + description)
+        print(f"DEBUG: Processing {len(result['events'])} events from Ship24")
         for event_data in result["events"]:
             # Check if event already exists
             existing_event = db.query(DBTrackingEvent).filter(
@@ -103,6 +137,7 @@ async def refresh_tracking(
             ).first()
 
             if not existing_event:
+                print(f"DEBUG: Saving new event: {event_data.get('description')} at {event_data['timestamp']}")
                 db_event = DBTrackingEvent(
                     id=str(uuid.uuid4()),
                     package_id=package_id,
@@ -113,6 +148,8 @@ async def refresh_tracking(
                     courier_event_code=event_data.get("courier_event_code")
                 )
                 db.add(db_event)
+            else:
+                print(f"DEBUG: Skipping duplicate event: {event_data.get('description')}")
 
         db.commit()
         db.refresh(db_package)

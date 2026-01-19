@@ -17,9 +17,6 @@ import {
 } from '@mui/material';
 import {
   ArrowBack,
-  Edit,
-  Archive,
-  Delete,
   CheckCircle,
   LocalShipping,
   Error as ErrorIcon,
@@ -27,10 +24,16 @@ import {
 } from '@mui/icons-material';
 import { apiClient } from '../api/client';
 import { useTracking } from '../hooks/useTracking';
+import { useCouriers } from '../contexts/CourierContext';
 import TrackingTimeline from '../components/TrackingTimeline';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Package, TrackingEvent, PackageStatus } from '../types';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
+import { getFaviconUrl } from '../utils/favicon';
 import refreshImage from '../assets/refresh.png';
+import editImage from '../assets/edit.png';
+import archiveImage from '../assets/archive.png';
+import deleteImage from '../assets/delete.png';
 
 const getStatusColor = (status?: PackageStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' => {
   switch (status) {
@@ -70,14 +73,26 @@ const PackageDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { refresh: refreshTracking, loading: trackingLoading } = useTracking();
+  const { getCourierByCode } = useCouriers();
 
   const [packageData, setPackageData] = useState<Package | null>(null);
   const [events, setEvents] = useState<TrackingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [nickname, setNickname] = useState('');
-  const [description, setDescription] = useState('');
+  const [note, setNote] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmColor?: 'primary' | 'error' | 'warning';
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const loadPackage = async () => {
     if (!id) return;
@@ -91,8 +106,7 @@ const PackageDetailPage: React.FC = () => {
       ]);
       setPackageData(pkgData);
       setEvents(eventsData);
-      setNickname(pkgData.nickname || '');
-      setDescription(pkgData.description || '');
+      setNote(pkgData.note || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load package');
     } finally {
@@ -115,7 +129,7 @@ const PackageDetailPage: React.FC = () => {
   const handleSaveEdit = async () => {
     if (!id) return;
     try {
-      await apiClient.packages.update(id, { nickname, description });
+      await apiClient.packages.update(id, { note });
       setEditDialogOpen(false);
       await loadPackage();
     } catch (err) {
@@ -123,20 +137,32 @@ const PackageDetailPage: React.FC = () => {
     }
   };
 
-  const handleArchive = async () => {
+  const handleArchive = () => {
     if (!id || !packageData) return;
-    if (window.confirm(`Archive package ${packageData.nickname || packageData.tracking_number}?`)) {
-      await apiClient.packages.update(id, { archived: true });
-      navigate('/');
-    }
+    setConfirmDialog({
+      open: true,
+      title: 'Archive Package',
+      message: `Archive package ${packageData.note || packageData.tracking_number}?`,
+      confirmColor: 'primary',
+      onConfirm: async () => {
+        await apiClient.packages.update(id, { archived: true });
+        navigate('/');
+      },
+    });
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!id || !packageData) return;
-    if (window.confirm(`Delete package ${packageData.nickname || packageData.tracking_number}? This cannot be undone.`)) {
-      await apiClient.packages.delete(id);
-      navigate('/');
-    }
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Package',
+      message: `Delete package ${packageData.note || packageData.tracking_number}? This cannot be undone.`,
+      confirmColor: 'error',
+      onConfirm: async () => {
+        await apiClient.packages.delete(id);
+        navigate('/');
+      },
+    });
   };
 
   if (loading) {
@@ -174,9 +200,9 @@ const PackageDetailPage: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box sx={{ flex: 1 }}>
             <Typography variant="h4" component="h1" fontWeight={600} gutterBottom>
-              {packageData.nickname || packageData.tracking_number}
+              {packageData.note || packageData.tracking_number}
             </Typography>
-            {packageData.nickname && (
+            {packageData.note && (
               <Typography variant="body1" color="text.secondary" gutterBottom>
                 Tracking: {packageData.tracking_number}
               </Typography>
@@ -184,13 +210,13 @@ const PackageDetailPage: React.FC = () => {
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <IconButton onClick={() => setEditDialogOpen(true)}>
-              <Edit />
+              <img src={editImage} alt="Edit" style={{ height: '24px', width: '24px', objectFit: 'contain' }} />
             </IconButton>
             <IconButton onClick={handleArchive}>
-              <Archive />
+              <img src={archiveImage} alt="Archive" style={{ height: '24px', width: '24px', objectFit: 'contain' }} />
             </IconButton>
-            <IconButton onClick={handleDelete} color="error">
-              <Delete />
+            <IconButton onClick={handleDelete}>
+              <img src={deleteImage} alt="Delete" style={{ height: '24px', width: '24px', objectFit: 'contain' }} />
             </IconButton>
           </Box>
         </Box>
@@ -203,10 +229,64 @@ const PackageDetailPage: React.FC = () => {
               icon={getStatusIcon(packageData.last_status)}
             />
           )}
-          {packageData.courier && (
-            <Chip label={packageData.courier} variant="outlined" />
-          )}
+          {packageData.detected_courier && (() => {
+            const courier = getCourierByCode(packageData.detected_courier);
+            return (
+              <Chip
+                label={courier?.courierName || packageData.detected_courier}
+                variant="outlined"
+                avatar={
+                  courier?.website ? (
+                    <img
+                      src={getFaviconUrl(courier.website, 16)}
+                      alt=""
+                      style={{ width: 16, height: 16 }}
+                      onError={(e) => {
+                        // Hide image on error
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : undefined
+                }
+              />
+            );
+          })()}
         </Box>
+
+        {/* Country Route */}
+        {(packageData.origin_country || packageData.destination_country) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            {packageData.origin_country && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <img
+                  src={`https://flagcdn.com/24x18/${packageData.origin_country.toLowerCase()}.png`}
+                  srcSet={`https://flagcdn.com/48x36/${packageData.origin_country.toLowerCase()}.png 2x, https://flagcdn.com/72x54/${packageData.origin_country.toLowerCase()}.png 3x`}
+                  width="24"
+                  height="18"
+                  alt={packageData.origin_country}
+                  style={{ border: '1px solid #e0e0e0' }}
+                />
+                <Typography variant="body2" color="text.secondary">{packageData.origin_country}</Typography>
+              </Box>
+            )}
+            {packageData.origin_country && packageData.destination_country && (
+              <Typography variant="body2" color="text.secondary">→</Typography>
+            )}
+            {packageData.destination_country && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <img
+                  src={`https://flagcdn.com/24x18/${packageData.destination_country.toLowerCase()}.png`}
+                  srcSet={`https://flagcdn.com/48x36/${packageData.destination_country.toLowerCase()}.png 2x, https://flagcdn.com/72x54/${packageData.destination_country.toLowerCase()}.png 3x`}
+                  width="24"
+                  height="18"
+                  alt={packageData.destination_country}
+                  style={{ border: '1px solid #e0e0e0' }}
+                />
+                <Typography variant="body2" color="text.secondary">{packageData.destination_country}</Typography>
+              </Box>
+            )}
+          </Box>
+        )}
 
         {packageData.last_location && (
           <Typography variant="body1" sx={{ mb: 1 }}>
@@ -214,9 +294,9 @@ const PackageDetailPage: React.FC = () => {
           </Typography>
         )}
 
-        {packageData.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {packageData.description}
+        {packageData.estimated_delivery && (
+          <Typography variant="body1" sx={{ mb: 1, color: 'primary.main', fontWeight: 500 }}>
+            📦 Estimated delivery: {format(new Date(packageData.estimated_delivery), 'MMM dd, yyyy')}
           </Typography>
         )}
 
@@ -247,17 +327,10 @@ const PackageDetailPage: React.FC = () => {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
-              label="Nickname"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              multiline
-              rows={3}
+              label="Note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g., Amazon Order #123"
               fullWidth
             />
           </Box>
@@ -267,6 +340,15 @@ const PackageDetailPage: React.FC = () => {
           <Button onClick={handleSaveEdit} variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmColor={confirmDialog.confirmColor}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, open: false })}
+      />
     </Box>
   );
 };

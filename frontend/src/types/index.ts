@@ -41,13 +41,16 @@ export interface Package {
   user_id: string;
   tracking_number: string;
   courier?: CourierType;
-  nickname?: string;
-  description?: string;
+  note?: string;
   ship24_tracker_id?: string;
   last_status?: PackageStatus;
   last_location?: string;
   last_updated?: string;
   delivered_at?: string;
+  origin_country?: string;
+  destination_country?: string;
+  estimated_delivery?: string;
+  detected_courier?: string;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -56,14 +59,12 @@ export interface Package {
 export interface PackageCreate {
   tracking_number: string;
   courier?: CourierType;
-  nickname?: string;
-  description?: string;
+  note?: string;
 }
 
 export interface PackageUpdate {
   courier?: CourierType;
-  nickname?: string;
-  description?: string;
+  note?: string;
   archived?: boolean;
 }
 
@@ -100,4 +101,15 @@ export interface TrackingLookupResponse {
   events: TrackingEventData[];
   estimated_delivery?: string;
   ship24_tracker_id?: string;
+}
+
+// Courier types
+export interface Courier {
+  courierCode: string;
+  courierName: string;
+  website: string;
+  isPost: boolean;
+  countryCode: string | null;
+  requiredFields: string[] | null;
+  isDeprecated: boolean;
 }

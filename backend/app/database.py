@@ -58,8 +58,7 @@ class DBPackage(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     tracking_number = Column(String, nullable=False, index=True)
     courier = Column(SQLEnum(CourierType), nullable=True)  # Optional courier selection
-    nickname = Column(String, nullable=True)  # User-friendly name
-    description = Column(Text, nullable=True)  # Package description
+    note = Column(String, nullable=True)  # User note for package
 
     # Ship24 cached data
     ship24_tracker_id = Column(String, nullable=True)  # Ship24 tracker ID for caching
@@ -67,6 +66,12 @@ class DBPackage(Base):
     last_location = Column(String, nullable=True)  # Cached location
     last_updated = Column(DateTime, nullable=True)  # When tracking was last fetched
     delivered_at = Column(DateTime, nullable=True)  # Delivery timestamp
+
+    # Shipment details
+    origin_country = Column(String, nullable=True)  # Origin country code (e.g., "US")
+    destination_country = Column(String, nullable=True)  # Destination country code (e.g., "CN")
+    estimated_delivery = Column(DateTime, nullable=True)  # Estimated delivery date from courier
+    detected_courier = Column(String, nullable=True)  # Actual detected courier code from Ship24 (e.g., "evri", "us-post")
 
     archived = Column(Boolean, default=False)  # Archive delivered/old packages
     created_at = Column(DateTime, default=datetime.now)

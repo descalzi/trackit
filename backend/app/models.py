@@ -33,8 +33,7 @@ class PackageBase(BaseModel):
     """Base package model"""
     tracking_number: str
     courier: Optional[CourierType] = None
-    nickname: Optional[str] = None
-    description: Optional[str] = None
+    note: Optional[str] = None
 
 
 class PackageCreate(PackageBase):
@@ -45,8 +44,7 @@ class PackageCreate(PackageBase):
 class PackageUpdate(BaseModel):
     """Package update model - all fields optional"""
     courier: Optional[CourierType] = None
-    nickname: Optional[str] = None
-    description: Optional[str] = None
+    note: Optional[str] = None
     archived: Optional[bool] = None
 
 
@@ -59,6 +57,10 @@ class Package(PackageBase):
     last_location: Optional[str] = None
     last_updated: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
+    origin_country: Optional[str] = None
+    destination_country: Optional[str] = None
+    estimated_delivery: Optional[datetime] = None
+    detected_courier: Optional[str] = None
     archived: bool
     created_at: datetime
     updated_at: datetime

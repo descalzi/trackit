@@ -79,7 +79,7 @@ class Ship24Service:
                 )
 
                 print(f"DEBUG: Ship24 response status: {response.status_code}")
-                print(f"DEBUG: Ship24 response body: {response.text[:500]}")
+                print(f"DEBUG: Ship24 response body: {response.text}")
 
                 if response.status_code == 429:
                     raise Ship24RateLimitError("Ship24 API rate limit exceeded")
@@ -92,6 +92,37 @@ class Ship24Service:
 
                 data = response.json()
                 return self._parse_tracking_response(data)
+
+            except httpx.TimeoutException:
+                raise Ship24Error("Ship24 API request timed out")
+            except httpx.RequestError as e:
+                raise Ship24Error(f"Ship24 API request failed: {str(e)}")
+
+    async def get_couriers(self) -> List[Dict]:
+        """
+        Get list of all supported couriers from Ship24
+        GET /public/v1/couriers
+
+        Returns:
+            List of courier dictionaries with courierCode, courierName, etc.
+
+        Raises:
+            Ship24Error: For API errors
+        """
+        endpoint = f"{self.base_url}/public/v1/couriers"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(endpoint, headers=self.headers)
+
+                if response.status_code == 429:
+                    raise Ship24RateLimitError("Ship24 API rate limit exceeded")
+
+                if response.status_code != 200:
+                    raise Ship24Error(f"Ship24 API error: {response.status_code} - {response.text}")
+
+                data = response.json()
+                return data.get("data", {}).get("couriers", [])
 
             except httpx.TimeoutException:
                 raise Ship24Error("Ship24 API request timed out")
@@ -116,7 +147,11 @@ class Ship24Service:
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
+                print(f"DEBUG: Ship24 request to {endpoint}")
                 response = await client.get(endpoint, headers=self.headers)
+
+                print(f"DEBUG: Ship24 response status: {response.status_code}")
+                print(f"DEBUG: Ship24 response body: {response.text}")
 
                 if response.status_code == 429:
                     raise Ship24RateLimitError("Ship24 API rate limit exceeded")
@@ -145,32 +180,77 @@ class Ship24Service:
         Returns:
             Standardized tracking data dict
         """
-        # Ship24 response structure may vary - this is a basic implementation
-        # Adjust based on actual Ship24 API response format
-        tracker = data.get("data", {}).get("tracker", data.get("tracker", {}))
+        # Ship24 response structure: data.trackings[0] for /track endpoint
+        # or data.tracker for /results endpoint
+        tracking_data = data.get("data", {})
+        if "trackings" in tracking_data and tracking_data["trackings"]:
+            tracker = tracking_data["trackings"][0].get("tracker", {})
+        else:
+            tracker = tracking_data.get("tracker", data.get("tracker", {}))
 
         tracking_number = tracker.get("trackingNumber", "")
-        courier = tracker.get("courierCode", "Unknown")
+
+        # Handle courierCode - it can be a string, array, or None
+        courier_code = tracker.get("courierCode")
+        if isinstance(courier_code, list) and courier_code:
+            courier = courier_code[0]  # Take first courier if array
+        elif isinstance(courier_code, str) and courier_code:
+            courier = courier_code
+        else:
+            courier = None  # Will be filled from shipment.courier if available
+
         tracker_id = tracker.get("trackerId", "")
 
-        # Get shipment data
-        shipment = tracker.get("shipment", {})
+        # Get shipment data and events
+        if "trackings" in tracking_data and tracking_data["trackings"]:
+            tracking = tracking_data["trackings"][0]
+            shipment = tracking.get("shipment", {})
+            # Events are at tracking level, not inside shipment
+            ship24_events = tracking.get("events", [])
+        else:
+            shipment = tracker.get("shipment", {})
+            # For /results endpoint, events might be in shipment
+            ship24_events = shipment.get("events", [])
+
         status_milestone = shipment.get("statusMilestone", "")
-        location = shipment.get("location", {}).get("address", "")
+
+        # Try to get location from various possible fields
+        location_obj = shipment.get("location", {})
+        if isinstance(location_obj, dict):
+            location = location_obj.get("address", "")
+        else:
+            location = str(location_obj) if location_obj else ""
 
         # Parse events
-        events = self._parse_events(shipment.get("events", []))
+        print(f"DEBUG: Found {len(ship24_events)} raw events in Ship24 response")
+        events = self._parse_events(ship24_events)
+
+        # If courier not found in tracker, try getting from shipment or first event
+        if not courier:
+            courier = shipment.get("courier", {}).get("name") or shipment.get("courierCode")
+        if not courier and ship24_events:
+            # Try to get courier from the first event's courierCode
+            first_event_courier = ship24_events[0].get("courierCode")
+            if first_event_courier:
+                courier = first_event_courier
 
         # Get status
         status = self._normalize_status(status_milestone)
 
-        # Estimated delivery
+        # Estimated delivery - check both locations
         estimated_delivery = None
-        if shipment.get("estimatedDelivery"):
+        delivery_info = shipment.get("delivery", {})
+        estimated_delivery_str = delivery_info.get("estimatedDeliveryDate") or delivery_info.get("courierEstimatedDeliveryDate")
+        if estimated_delivery_str:
             try:
-                estimated_delivery = datetime.fromisoformat(shipment["estimatedDelivery"].replace("Z", "+00:00"))
+                estimated_delivery = datetime.fromisoformat(estimated_delivery_str.replace("Z", "+00:00"))
             except:
                 pass
+
+        # Extract country codes
+        origin_country = shipment.get("originCountryCode")
+        destination_country = shipment.get("destinationCountryCode")
+        print(f"DEBUG: Extracted country codes - Origin: {origin_country}, Destination: {destination_country}")
 
         return {
             "tracking_number": tracking_number,
@@ -179,7 +259,9 @@ class Ship24Service:
             "status": status,
             "location": location,
             "events": events,
-            "estimated_delivery": estimated_delivery
+            "estimated_delivery": estimated_delivery,
+            "origin_country": origin_country,
+            "destination_country": destination_country
         }
 
     def _normalize_status(self, ship24_status: str) -> PackageStatus:
@@ -192,17 +274,21 @@ class Ship24Service:
         Returns:
             PackageStatus enum value
         """
-        status_lower = ship24_status.lower()
+        if not ship24_status:
+            return PackageStatus.UNKNOWN
 
-        if "delivered" in status_lower:
+        # Normalize: replace underscores with spaces and convert to lowercase
+        status_normalized = ship24_status.replace("_", " ").lower()
+
+        if "delivered" in status_normalized:
             return PackageStatus.DELIVERED
-        elif "out for delivery" in status_lower or "out_for_delivery" in status_lower:
+        elif "out for delivery" in status_normalized:
             return PackageStatus.OUT_FOR_DELIVERY
-        elif "in transit" in status_lower or "in_transit" in status_lower:
+        elif "in transit" in status_normalized:
             return PackageStatus.IN_TRANSIT
-        elif "exception" in status_lower or "failed" in status_lower or "returned" in status_lower:
+        elif "exception" in status_normalized or "failed" in status_normalized or "returned" in status_normalized:
             return PackageStatus.EXCEPTION
-        elif "pending" in status_lower or "info received" in status_lower:
+        elif "pending" in status_normalized or "info received" in status_normalized:
             return PackageStatus.PENDING
         else:
             return PackageStatus.UNKNOWN
@@ -226,15 +312,20 @@ class Ship24Service:
             except:
                 timestamp = datetime.now()
 
-            location_data = event.get("location", {})
-            location = location_data.get("address", "") if isinstance(location_data, dict) else str(location_data)
+            location_data = event.get("location")
+            if location_data and isinstance(location_data, dict):
+                location = location_data.get("address", "")
+            elif location_data:
+                location = str(location_data)
+            else:
+                location = ""
 
             events.append({
                 "status": self._normalize_status(event.get("statusMilestone", "")),
                 "location": location,
                 "timestamp": timestamp,
-                "description": event.get("statusDescription", event.get("description", "")),
-                "courier_event_code": event.get("eventCode", "")
+                "description": event.get("status", ""),  # Ship24 uses "status" field for description
+                "courier_event_code": event.get("statusCode", "")  # Ship24 uses "statusCode" field
             })
 
         # Sort by timestamp (newest first)

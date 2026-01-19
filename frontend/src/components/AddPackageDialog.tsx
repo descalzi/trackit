@@ -12,7 +12,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import { CourierType, PackageCreate } from '../types';
-import { useTracking } from '../hooks/useTracking';
+import packageImage from '../assets/package.png';
 
 interface AddPackageDialogProps {
   open: boolean;
@@ -23,18 +23,14 @@ interface AddPackageDialogProps {
 const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAdd }) => {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [courier, setCourier] = useState<CourierType | ''>('');
-  const [nickname, setNickname] = useState('');
-  const [description, setDescription] = useState('');
+  const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const { lookup } = useTracking();
 
   const handleReset = () => {
     setTrackingNumber('');
     setCourier('');
-    setNickname('');
-    setDescription('');
+    setNote('');
     setError(null);
   };
 
@@ -53,23 +49,11 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
     setError(null);
 
     try {
-      // Optional: Preview tracking before saving
-      const lookupResult = await lookup({
-        tracking_number: trackingNumber.trim(),
-        courier: courier || undefined,
-      });
-
-      if (!lookupResult) {
-        // Lookup failed but we can still save it
-        console.warn('Tracking lookup failed, but will save package anyway');
-      }
-
-      // Create package
+      // Create package - backend will automatically fetch tracking data
       const packageData: PackageCreate = {
         tracking_number: trackingNumber.trim(),
         courier: courier || undefined,
-        nickname: nickname.trim() || undefined,
-        description: description.trim() || undefined,
+        note: note.trim() || undefined,
       };
 
       await onAdd(packageData);
@@ -86,6 +70,14 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
       <DialogTitle>Add Package</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <img
+              src={packageImage}
+              alt="Package"
+              style={{ height: '120px', width: '120px', objectFit: 'contain' }}
+            />
+          </Box>
+
           {error && <Alert severity="error">{error}</Alert>}
 
           <TextField
@@ -114,20 +106,10 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
           </TextField>
 
           <TextField
-            label="Nickname (Optional)"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
+            label="Note (Optional)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
             placeholder="e.g., Amazon Order #123"
-            fullWidth
-          />
-
-          <TextField
-            label="Description (Optional)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add notes about this package"
-            multiline
-            rows={3}
             fullWidth
           />
         </Box>

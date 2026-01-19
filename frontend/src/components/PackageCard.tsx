@@ -83,14 +83,14 @@ const PackageCard: React.FC<PackageCardProps> = ({
 
   const handleArchive = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Archive package ${pkg.nickname || pkg.tracking_number}?`)) {
+    if (window.confirm(`Archive package ${pkg.note || pkg.tracking_number}?`)) {
       onArchive(pkg.id);
     }
   };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Delete package ${pkg.nickname || pkg.tracking_number}? This cannot be undone.`)) {
+    if (window.confirm(`Delete package ${pkg.note || pkg.tracking_number}? This cannot be undone.`)) {
       onDelete(pkg.id);
     }
   };
@@ -110,7 +110,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
           <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
-            {pkg.nickname || pkg.tracking_number}
+            {pkg.note || pkg.tracking_number}
           </Typography>
           {pkg.last_status && (
             <Chip
@@ -122,7 +122,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
           )}
         </Box>
 
-        {pkg.nickname && (
+        {pkg.note && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             {pkg.tracking_number}
           </Typography>
@@ -137,12 +137,6 @@ const PackageCard: React.FC<PackageCardProps> = ({
         {pkg.last_location && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             📍 {pkg.last_location}
-          </Typography>
-        )}
-
-        {pkg.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {pkg.description}
           </Typography>
         )}
 

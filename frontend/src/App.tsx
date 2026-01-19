@@ -4,6 +4,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { CourierProvider } from './contexts/CourierContext';
 import theme from './theme/theme';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -46,29 +47,31 @@ const App: React.FC = () => {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
-          <BrowserRouter basename={getBasename()}>
-            <Routes>
-              {/* Public route */}
-              <Route path="/login" element={<LoginPage />} />
+          <CourierProvider>
+            <BrowserRouter basename={getBasename()}>
+              <Routes>
+                {/* Public route */}
+                <Route path="/login" element={<LoginPage />} />
 
-              {/* Protected routes with Layout */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<DashboardPage />} />
-                <Route path="package/:id" element={<PackageDetailPage />} />
-                <Route path="archive" element={<ArchivePage />} />
-              </Route>
+                {/* Protected routes with Layout */}
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<DashboardPage />} />
+                  <Route path="package/:id" element={<PackageDetailPage />} />
+                  <Route path="archive" element={<ArchivePage />} />
+                </Route>
 
-              {/* Fallback route */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
+                {/* Fallback route */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </CourierProvider>
         </AuthProvider>
       </ThemeProvider>
     </GoogleOAuthProvider>

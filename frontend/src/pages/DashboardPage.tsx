@@ -4,26 +4,92 @@ import {
   Box,
   Typography,
   Button,
-  Grid,
   CircularProgress,
   Alert,
   Paper,
   Fab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
+import {
+  LocalShipping,
+  CheckCircle,
+  Error as ErrorIcon,
+  AccessTime,
+} from '@mui/icons-material';
 import { usePackages } from '../hooks/usePackages';
 import { useTracking } from '../hooks/useTracking';
-import PackageCard from '../components/PackageCard';
+import { useCouriers } from '../contexts/CourierContext';
 import AddPackageDialog from '../components/AddPackageDialog';
-import { PackageCreate } from '../types';
-import packageAddImage from '../assets/package_add.png';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { PackageCreate, PackageStatus } from '../types';
+import { getFaviconUrl } from '../utils/favicon';
+import packageAddImage from '../assets/package_add_white.png';
 import refreshImage from '../assets/refresh.png';
+import archiveImage from '../assets/archive.png';
+import deleteImage from '../assets/delete.png';
+import { formatDistanceToNow } from 'date-fns';
+
+const getStatusColor = (status?: PackageStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' => {
+  switch (status) {
+    case PackageStatus.DELIVERED:
+      return 'success';
+    case PackageStatus.OUT_FOR_DELIVERY:
+      return 'primary';
+    case PackageStatus.IN_TRANSIT:
+      return 'primary';
+    case PackageStatus.EXCEPTION:
+      return 'error';
+    case PackageStatus.PENDING:
+      return 'warning';
+    default:
+      return 'default';
+  }
+};
+
+const getStatusIcon = (status?: PackageStatus) => {
+  switch (status) {
+    case PackageStatus.DELIVERED:
+      return <CheckCircle fontSize="small" />;
+    case PackageStatus.OUT_FOR_DELIVERY:
+      return <LocalShipping fontSize="small" />;
+    case PackageStatus.IN_TRANSIT:
+      return <LocalShipping fontSize="small" />;
+    case PackageStatus.EXCEPTION:
+      return <ErrorIcon fontSize="small" />;
+    case PackageStatus.PENDING:
+      return <AccessTime fontSize="small" />;
+    default:
+      return <AccessTime fontSize="small" />;
+  }
+};
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { packages, loading, error, refresh, createPackage, deletePackage, archivePackage } = usePackages(false);
   const { refresh: refreshTracking } = useTracking();
+  const { getCourierByCode } = useCouriers();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmColor?: 'primary' | 'error' | 'warning';
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const handleAddPackage = async (packageData: PackageCreate) => {
     await createPackage(packageData);
@@ -43,6 +109,32 @@ const DashboardPage: React.FC = () => {
 
   const handlePackageClick = (id: string) => {
     navigate(`/package/${id}`);
+  };
+
+  const handleArchive = (id: string, note: string, trackingNumber: string) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Archive Package',
+      message: `Archive package ${note || trackingNumber}?`,
+      confirmColor: 'primary',
+      onConfirm: async () => {
+        await archivePackage(id);
+        setConfirmDialog({ ...confirmDialog, open: false });
+      },
+    });
+  };
+
+  const handleDelete = (id: string, note: string, trackingNumber: string) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Package',
+      message: `Delete package ${note || trackingNumber}? This cannot be undone.`,
+      confirmColor: 'error',
+      onConfirm: async () => {
+        await deletePackage(id);
+        setConfirmDialog({ ...confirmDialog, open: false });
+      },
+    });
   };
 
   if (loading) {
@@ -69,7 +161,7 @@ const DashboardPage: React.FC = () => {
           </Button>
           <Button
             variant="contained"
-            startIcon={<img src={packageAddImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />}
+            startIcon={<img src={packageAddImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />}
             onClick={() => setDialogOpen(true)}
           >
             Add Package
@@ -93,27 +185,157 @@ const DashboardPage: React.FC = () => {
           </Typography>
           <Button
             variant="contained"
-            startIcon={<img src={packageAddImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />}
+            startIcon={<img src={packageAddImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />}
             onClick={() => setDialogOpen(true)}
           >
             Add Your First Package
           </Button>
         </Paper>
       ) : (
-        <Grid container spacing={3}>
-          {packages.map((pkg) => (
-            <Grid item xs={12} sm={6} md={4} key={pkg.id}>
-              <PackageCard
-                package={pkg}
-                onRefresh={handleRefreshPackage}
-                onArchive={archivePackage}
-                onDelete={deletePackage}
-                onClick={handlePackageClick}
-                loading={refreshingId === pkg.id}
-              />
-            </Grid>
-          ))}
-        </Grid>
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Package</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Courier</TableCell>
+                <TableCell>Location</TableCell>
+                <TableCell>Last Updated</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {packages.map((pkg) => (
+                <TableRow
+                  key={pkg.id}
+                  hover
+                  sx={{ cursor: 'pointer', '&:last-child td, &:last-child th': { border: 0 } }}
+                  onClick={() => handlePackageClick(pkg.id)}
+                >
+                  <TableCell>
+                    <Box>
+                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                        {pkg.note || pkg.tracking_number}
+                      </Typography>
+                      {pkg.note && (
+                        <Typography variant="body2" color="text.secondary">
+                          {pkg.tracking_number}
+                        </Typography>
+                      )}
+                      {pkg.courier && (
+                        <Typography variant="caption" color="text.secondary">
+                          {pkg.courier}
+                        </Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {pkg.last_status && (
+                      <Chip
+                        label={pkg.last_status}
+                        color={getStatusColor(pkg.last_status)}
+                        size="small"
+                        icon={getStatusIcon(pkg.last_status)}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {pkg.detected_courier && (() => {
+                      const courier = getCourierByCode(pkg.detected_courier);
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {courier?.website && (
+                            <img
+                              src={getFaviconUrl(courier.website, 16)}
+                              alt=""
+                              style={{ width: 16, height: 16 }}
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          )}
+                          <Typography variant="body2">
+                            {courier?.courierName || pkg.detected_courier}
+                          </Typography>
+                        </Box>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    {pkg.last_location && (
+                      <Typography variant="body2">
+                        📍 {pkg.last_location}
+                      </Typography>
+                    )}
+                    {!pkg.last_location && (pkg.origin_country || pkg.destination_country) && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {pkg.origin_country && (
+                          <img
+                            src={`https://flagcdn.com/16x12/${pkg.origin_country.toLowerCase()}.png`}
+                            srcSet={`https://flagcdn.com/32x24/${pkg.origin_country.toLowerCase()}.png 2x, https://flagcdn.com/48x36/${pkg.origin_country.toLowerCase()}.png 3x`}
+                            width="16"
+                            height="12"
+                            alt={pkg.origin_country}
+                            style={{ border: '1px solid #e0e0e0' }}
+                          />
+                        )}
+                        {pkg.origin_country && pkg.destination_country && (
+                          <Typography variant="caption" color="text.secondary">→</Typography>
+                        )}
+                        {pkg.destination_country && (
+                          <img
+                            src={`https://flagcdn.com/16x12/${pkg.destination_country.toLowerCase()}.png`}
+                            srcSet={`https://flagcdn.com/32x24/${pkg.destination_country.toLowerCase()}.png 2x, https://flagcdn.com/48x36/${pkg.destination_country.toLowerCase()}.png 3x`}
+                            width="16"
+                            height="12"
+                            alt={pkg.destination_country}
+                            style={{ border: '1px solid #e0e0e0' }}
+                          />
+                        )}
+                      </Box>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {pkg.last_updated && (
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDistanceToNow(new Date(pkg.last_updated), { addSuffix: true })}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="Refresh tracking">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRefreshPackage(pkg.id)}
+                        disabled={refreshingId === pkg.id}
+                      >
+                        <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Archive package">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleArchive(pkg.id, pkg.note || '', pkg.tracking_number)}
+                        disabled={refreshingId === pkg.id}
+                      >
+                        <img src={archiveImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete package">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDelete(pkg.id, pkg.note || '', pkg.tracking_number)}
+                        disabled={refreshingId === pkg.id}
+                      >
+                        <img src={deleteImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       {/* Floating Action Button for mobile */}
@@ -128,13 +350,22 @@ const DashboardPage: React.FC = () => {
         }}
         onClick={() => setDialogOpen(true)}
       >
-        <img src={packageAddImage} alt="" style={{ height: '24px', width: '24px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+        <img src={packageAddImage} alt="" style={{ height: '24px', width: '24px', objectFit: 'contain' }} />
       </Fab>
 
       <AddPackageDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onAdd={handleAddPackage}
+      />
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmColor={confirmDialog.confirmColor}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, open: false })}
       />
     </Box>
   );

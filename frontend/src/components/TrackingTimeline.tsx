@@ -18,6 +18,8 @@ import {
 } from '@mui/icons-material';
 import { TrackingEvent, PackageStatus } from '../types';
 import { format } from 'date-fns';
+import { useCouriers } from '../contexts/CourierContext';
+import { getFaviconUrl } from '../utils/favicon';
 
 interface TrackingTimelineProps {
   events: TrackingEvent[];
@@ -59,6 +61,8 @@ const getStatusColor = (status: PackageStatus): 'primary' | 'success' | 'error' 
 };
 
 const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = false }) => {
+  const { getCourierByCode } = useCouriers();
+
   if (loading) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
@@ -83,18 +87,14 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
   }
 
   return (
-    <Timeline position="alternate">
-      {events.map((event, index) => (
-        <TimelineItem key={event.id}>
-          <TimelineOppositeContent sx={{ py: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              {format(new Date(event.timestamp), 'MMM dd, yyyy')}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {format(new Date(event.timestamp), 'HH:mm')}
-            </Typography>
-          </TimelineOppositeContent>
+    <Timeline position="right">
+      {events.map((event, index) => {
+        // Check if courier changed from previous event
+        const prevEvent = index < events.length - 1 ? events[index + 1] : null;
+        const courierChanged = prevEvent && event.courier_event_code !== prevEvent.courier_event_code;
 
+        return (
+        <TimelineItem key={event.id}>
           <TimelineSeparator>
             <TimelineDot color={getStatusColor(event.status)}>
               {getStatusIcon(event.status)}
@@ -104,13 +104,20 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
 
           <TimelineContent sx={{ py: 2 }}>
             <Paper elevation={2} sx={{ p: 2 }}>
-              <Box sx={{ mb: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                 <Chip
                   label={event.status}
                   color={getStatusColor(event.status)}
                   size="small"
-                  sx={{ mb: 1 }}
                 />
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {format(new Date(event.timestamp), 'MMM dd, yyyy')}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {format(new Date(event.timestamp), 'HH:mm')}
+                  </Typography>
+                </Box>
               </Box>
 
               {event.description && (
@@ -126,15 +133,42 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
                 </Typography>
               )}
 
-              {event.courier_event_code && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                  Code: {event.courier_event_code}
-                </Typography>
-              )}
+              {event.courier_event_code && (() => {
+                const courier = getCourierByCode(event.courier_event_code);
+                return (
+                  <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Chip
+                      label={courier?.courierName || event.courier_event_code}
+                      size="small"
+                      variant="outlined"
+                      color={courierChanged ? 'primary' : 'default'}
+                      sx={{ fontSize: '0.7rem', height: '20px' }}
+                      avatar={
+                        courier?.website ? (
+                          <img
+                            src={getFaviconUrl(courier.website, 16)}
+                            alt=""
+                            style={{ width: 12, height: 12 }}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : undefined
+                      }
+                    />
+                    {courierChanged && (
+                      <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
+                        Courier changed
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })()}
             </Paper>
           </TimelineContent>
         </TimelineItem>
-      ))}
+        );
+      })}
     </Timeline>
   );
 };
