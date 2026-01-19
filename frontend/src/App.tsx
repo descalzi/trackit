@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
+import { Box, Typography } from '@mui/material';
 import CssBaseline from '@mui/material/CssBaseline';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -11,13 +12,47 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import PackageDetailPage from './pages/PackageDetailPage';
 import ArchivePage from './pages/ArchivePage';
+import AdminPage from './pages/AdminPage';
+import logoImage from './assets/logo.png';
+import loadingGif from './assets/loading.gif';
 
 // Protected Route component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading...</div>; // TODO: Replace with proper loading skeleton
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          backgroundColor: 'background.default',
+          gap: 3,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <img
+            src={logoImage}
+            alt="TrackIt Logo"
+            style={{ height: '54px', width: '54px', objectFit: 'contain' }}
+          />
+          <Typography variant="h2" component="div" sx={{ fontWeight: 700, color: 'primary.main', textShadow: '2px 2px 4px rgba(0, 0, 0, 0.2)' }}>
+            TrackIt
+          </Typography>
+        </Box>
+        <img
+          src={loadingGif}
+          alt="Loading"
+          style={{ height: '100px', width: '100px', objectFit: 'contain' }}
+        />
+        <Typography component="div">
+            loading ...
+          </Typography>
+      </Box>
+    );
   }
 
   if (!isAuthenticated) {
@@ -65,6 +100,7 @@ const App: React.FC = () => {
                   <Route index element={<DashboardPage />} />
                   <Route path="package/:id" element={<PackageDetailPage />} />
                   <Route path="archive" element={<ArchivePage />} />
+                  <Route path="admin" element={<AdminPage />} />
                 </Route>
 
                 {/* Fallback route */}

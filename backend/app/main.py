@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, packages, tracking
-from app.database import init_db
+from app.api import auth, packages, tracking, admin
+from app.database import init_db, SessionLocal
+from app.services.geocoding_service import get_geocoding_service
+import asyncio
 import os
 from dotenv import load_dotenv
 
@@ -32,12 +34,32 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(packages.router, prefix="/api/packages", tags=["Packages"])
 app.include_router(tracking.router, prefix="/api/tracking", tags=["Tracking"])
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+
+
+async def geocode_pending_locations():
+    """Background task to geocode all pending locations"""
+    print("Starting background geocoding of pending locations...")
+    db = SessionLocal()
+    try:
+        geocoding_service = get_geocoding_service()
+        count = await geocoding_service.geocode_all_pending(db)
+        print(f"Startup geocoding complete: {count} locations geocoded")
+    except Exception as e:
+        print(f"Error during startup geocoding: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup"""
+    """Initialize database and geocode pending locations on startup"""
     init_db()
+
+    # Geocode any pending locations in the background
+    asyncio.create_task(geocode_pending_locations())
 
 
 @app.get("/")

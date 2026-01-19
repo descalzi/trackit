@@ -15,21 +15,26 @@ import {
   TableRow,
   Chip,
   IconButton,
-  Tooltip,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   ArrowBack,
-  Unarchive,
   LocalShipping,
   CheckCircle,
   Error as ErrorIcon,
   AccessTime,
+  MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
 import { usePackages } from '../hooks/usePackages';
 import { useTracking } from '../hooks/useTracking';
+import EditPackageDialog from '../components/EditPackageDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { PackageStatus } from '../types';
 import refreshImage from '../assets/refresh.png';
+import editImage from '../assets/edit.png';
 import archiveImage from '../assets/archive.png';
 import deleteImage from '../assets/delete.png';
 import { formatDistanceToNow } from 'date-fns';
@@ -68,11 +73,32 @@ const getStatusIcon = (status?: PackageStatus) => {
   }
 };
 
+// Helper function to get status priority for sorting
+const getStatusPriority = (status?: PackageStatus): number => {
+  switch (status) {
+    case PackageStatus.EXCEPTION:
+      return 0; // Highest priority - needs attention
+    case PackageStatus.OUT_FOR_DELIVERY:
+      return 1; // Imminent delivery
+    case PackageStatus.IN_TRANSIT:
+      return 2; // Active tracking
+    case PackageStatus.PENDING:
+      return 3; // Waiting to start
+    case PackageStatus.DELIVERED:
+      return 4; // Lowest priority - completed
+    default:
+      return 5; // Unknown status
+  }
+};
+
 const ArchivePage: React.FC = () => {
   const navigate = useNavigate();
-  const { packages, loading, error, refresh, deletePackage, unarchivePackage } = usePackages(true);
+  const { packages, loading, error, refresh, deletePackage, unarchivePackage, updatePackage } = usePackages(true);
   const { refresh: refreshTracking } = useTracking();
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<{ id: string; note: string } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; packageId: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -86,7 +112,29 @@ const ArchivePage: React.FC = () => {
     onConfirm: () => {},
   });
 
+  // Sort packages by status priority, then by last updated time
+  const sortedPackages = [...packages].sort((a, b) => {
+    const priorityDiff = getStatusPriority(a.last_status) - getStatusPriority(b.last_status);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+    // Within same status, sort by most recent first
+    const aTime = a.last_updated ? new Date(a.last_updated).getTime() : 0;
+    const bTime = b.last_updated ? new Date(b.last_updated).getTime() : 0;
+    return bTime - aTime;
+  });
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, packageId: string) => {
+    event.stopPropagation();
+    setMenuAnchor({ element: event.currentTarget, packageId });
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null);
+  };
+
   const handleRefreshPackage = async (id: string) => {
+    handleMenuClose();
     setRefreshingId(id);
     try {
       await refreshTracking(id);
@@ -98,7 +146,20 @@ const ArchivePage: React.FC = () => {
     }
   };
 
+  const handleEdit = (id: string, note: string) => {
+    handleMenuClose();
+    setEditingPackage({ id, note });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async (note: string) => {
+    if (!editingPackage) return;
+    await updatePackage(editingPackage.id, { note });
+    setEditingPackage(null);
+  };
+
   const handleUnarchive = (id: string, note: string, trackingNumber: string) => {
+    handleMenuClose();
     setConfirmDialog({
       open: true,
       title: 'Unarchive Package',
@@ -112,6 +173,7 @@ const ArchivePage: React.FC = () => {
   };
 
   const handleDelete = (id: string, note: string, trackingNumber: string) => {
+    handleMenuClose();
     setConfirmDialog({
       open: true,
       title: 'Delete Package',
@@ -178,7 +240,7 @@ const ArchivePage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {packages.map((pkg) => (
+              {sortedPackages.map((pkg) => (
                 <TableRow
                   key={pkg.id}
                   hover
@@ -222,38 +284,19 @@ const ArchivePage: React.FC = () => {
                   <TableCell>
                     {pkg.last_updated && (
                       <Typography variant="body2" color="text.secondary">
+                        {/* @ts-expect-error date-fns v3 type issue */}
                         {formatDistanceToNow(new Date(pkg.last_updated), { addSuffix: true })}
                       </Typography>
                     )}
                   </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    <Tooltip title="Refresh tracking">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRefreshPackage(pkg.id)}
-                        disabled={refreshingId === pkg.id}
-                      >
-                        <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Unarchive package">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleUnarchive(pkg.id, pkg.note || '', pkg.tracking_number)}
-                        disabled={refreshingId === pkg.id}
-                      >
-                        <img src={archiveImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete package">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(pkg.id, pkg.note || '', pkg.tracking_number)}
-                        disabled={refreshingId === pkg.id}
-                      >
-                        <img src={deleteImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
-                      </IconButton>
-                    </Tooltip>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => handleMenuOpen(e, pkg.id)}
+                      disabled={refreshingId === pkg.id}
+                    >
+                      <MoreVertIcon />
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))}
@@ -261,6 +304,63 @@ const ArchivePage: React.FC = () => {
           </Table>
         </TableContainer>
       )}
+
+      {/* Package Actions Menu */}
+      <Menu
+        anchorEl={menuAnchor?.element}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+      >
+        {menuAnchor && (() => {
+          const pkg = sortedPackages.find(p => p.id === menuAnchor.packageId);
+          if (!pkg) return null;
+
+          return [
+            <MenuItem key="refresh" onClick={() => handleRefreshPackage(pkg.id)}>
+              <ListItemIcon>
+                <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+              </ListItemIcon>
+              <ListItemText>Refresh Tracking</ListItemText>
+            </MenuItem>,
+            <MenuItem key="edit" onClick={() => handleEdit(pkg.id, pkg.note || '')}>
+              <ListItemIcon>
+                <img src={editImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+              </ListItemIcon>
+              <ListItemText>Edit</ListItemText>
+            </MenuItem>,
+            <MenuItem key="unarchive" onClick={() => handleUnarchive(pkg.id, pkg.note || '', pkg.tracking_number)}>
+              <ListItemIcon>
+                <img src={archiveImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+              </ListItemIcon>
+              <ListItemText>Unarchive</ListItemText>
+            </MenuItem>,
+            <MenuItem key="delete" onClick={() => handleDelete(pkg.id, pkg.note || '', pkg.tracking_number)}>
+              <ListItemIcon>
+                <img src={deleteImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+              </ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>,
+          ];
+        })()}
+      </Menu>
+
+      <EditPackageDialog
+        open={editDialogOpen}
+        initialNote={editingPackage?.note || ''}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setEditingPackage(null);
+        }}
+        onSave={handleSaveEdit}
+      />
 
       <ConfirmDialog
         open={confirmDialog.open}

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Boolean, DateTime, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import create_engine, Column, String, Boolean, DateTime, ForeignKey, Text, Enum as SQLEnum, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -26,14 +26,6 @@ class PackageStatus(str, enum.Enum):
     UNKNOWN = "Unknown"
 
 
-class CourierType(str, enum.Enum):
-    EVRI = "Evri"
-    ROYAL_MAIL = "Royal Mail"
-    DPD = "DPD"
-    AUTO_DETECT = "Auto Detect"
-    OTHER = "Other"
-
-
 # Models
 class DBUser(Base):
     """User model - stores Google OAuth user information"""
@@ -57,7 +49,7 @@ class DBPackage(Base):
     id = Column(String, primary_key=True, index=True)  # UUID
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     tracking_number = Column(String, nullable=False, index=True)
-    courier = Column(SQLEnum(CourierType), nullable=True)  # Optional courier selection
+    courier = Column(String, nullable=True)  # Optional courier code (e.g., "evri", "dhl")
     note = Column(String, nullable=True)  # User note for package
 
     # Ship24 cached data
@@ -82,6 +74,24 @@ class DBPackage(Base):
     tracking_events = relationship("DBTrackingEvent", back_populates="package", cascade="all, delete-orphan")
 
 
+class DBLocation(Base):
+    """Location model - caches geocoded locations for reuse"""
+    __tablename__ = "locations"
+
+    location_string = Column(String, primary_key=True, index=True)  # "East Grinstead DO"
+    normalized_location = Column(String, nullable=False)  # "East Grinstead"
+    alias = Column(String, nullable=True)  # User-provided alias for failed geocoding
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    display_name = Column(String, nullable=True)  # Full address from Nominatim
+    country_code = Column(String(2), nullable=True)
+    geocoded_at = Column(DateTime, nullable=True)
+    geocoding_failed = Column(Boolean, default=False)
+
+    # Relationships
+    tracking_events = relationship("DBTrackingEvent", back_populates="location_ref")
+
+
 class DBTrackingEvent(Base):
     """Tracking Event model - stores tracking history/checkpoints"""
     __tablename__ = "tracking_events"
@@ -89,7 +99,8 @@ class DBTrackingEvent(Base):
     id = Column(String, primary_key=True, index=True)  # UUID
     package_id = Column(String, ForeignKey("packages.id"), nullable=False, index=True)
     status = Column(SQLEnum(PackageStatus), nullable=False)
-    location = Column(String, nullable=True)  # Event location
+    location = Column(String, nullable=True)  # Event location (keep for backward compatibility)
+    location_id = Column(String, ForeignKey("locations.location_string"), nullable=True)  # FK to locations
     timestamp = Column(DateTime, nullable=False, index=True)  # Event timestamp from courier
     description = Column(Text, nullable=True)  # Event description
     courier_event_code = Column(String, nullable=True)  # Raw courier event code
@@ -97,6 +108,7 @@ class DBTrackingEvent(Base):
 
     # Relationships
     package = relationship("DBPackage", back_populates="tracking_events")
+    location_ref = relationship("DBLocation", back_populates="tracking_events")
 
 
 def init_db():

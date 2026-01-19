@@ -142,6 +142,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
 
         {pkg.last_updated && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {/* @ts-expect-error date-fns v3 type issue */}
             Updated {formatDistanceToNow(new Date(pkg.last_updated), { addSuffix: true })}
           </Typography>
         )}

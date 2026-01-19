@@ -9,11 +9,6 @@ import {
   IconButton,
   CircularProgress,
   Alert,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -27,6 +22,8 @@ import { useTracking } from '../hooks/useTracking';
 import { useCouriers } from '../contexts/CourierContext';
 import TrackingTimeline from '../components/TrackingTimeline';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PackageGlobe from '../components/PackageGlobe';
+import EditPackageDialog from '../components/EditPackageDialog';
 import { Package, TrackingEvent, PackageStatus } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { getFaviconUrl } from '../utils/favicon';
@@ -80,7 +77,6 @@ const PackageDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [note, setNote] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -106,7 +102,6 @@ const PackageDetailPage: React.FC = () => {
       ]);
       setPackageData(pkgData);
       setEvents(eventsData);
-      setNote(pkgData.note || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load package');
     } finally {
@@ -126,15 +121,10 @@ const PackageDetailPage: React.FC = () => {
     }
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = async (note: string) => {
     if (!id) return;
-    try {
-      await apiClient.packages.update(id, { note });
-      setEditDialogOpen(false);
-      await loadPackage();
-    } catch (err) {
-      console.error('Failed to update package:', err);
-    }
+    await apiClient.packages.update(id, { note });
+    await loadPackage();
   };
 
   const handleArchive = () => {
@@ -209,6 +199,9 @@ const PackageDetailPage: React.FC = () => {
             )}
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
+            <IconButton onClick={handleRefresh}>
+              {trackingLoading ? <CircularProgress size={20} /> : <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />}
+            </IconButton>
             <IconButton onClick={() => setEditDialogOpen(true)}>
               <img src={editImage} alt="Edit" style={{ height: '24px', width: '24px', objectFit: 'contain' }} />
             </IconButton>
@@ -285,61 +278,45 @@ const PackageDetailPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary">{packageData.destination_country}</Typography>
               </Box>
             )}
+            {packageData.last_location && (
+              <Typography variant="body1" >
+                📍 {packageData.last_location}
+              </Typography>
+            )}
           </Box>
-        )}
-
-        {packageData.last_location && (
-          <Typography variant="body1" sx={{ mb: 1 }}>
-            📍 {packageData.last_location}
-          </Typography>
         )}
 
         {packageData.estimated_delivery && (
           <Typography variant="body1" sx={{ mb: 1, color: 'primary.main', fontWeight: 500 }}>
+            {/* @ts-expect-error date-fns v3 type issue */}
             📦 Estimated delivery: {format(new Date(packageData.estimated_delivery), 'MMM dd, yyyy')}
           </Typography>
         )}
 
         {packageData.last_updated && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            {/* @ts-expect-error date-fns v3 type issue */}
             Last updated {formatDistanceToNow(new Date(packageData.last_updated), { addSuffix: true })}
           </Typography>
         )}
-
-        <Button
-          variant="contained"
-          startIcon={trackingLoading ? <CircularProgress size={20} /> : <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />}
-          onClick={handleRefresh}
-          disabled={trackingLoading}
-        >
-          {trackingLoading ? 'Refreshing...' : 'Refresh Tracking'}
-        </Button>
       </Paper>
 
-      <Typography variant="h5" component="h2" fontWeight={600} gutterBottom>
-        Tracking History
-      </Typography>
+      {/* 3D Globe Visualization */}
+      <PackageGlobe packageId={id!} />
 
-      <TrackingTimeline events={events} loading={false} />
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" component="h2" fontWeight={600} gutterBottom>
+          Tracking History
+        </Typography>
+        <TrackingTimeline events={events} loading={false} />
+      </Paper>
 
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Package</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField
-              label="Note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g., Amazon Order #123"
-              fullWidth
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSaveEdit} variant="contained">Save</Button>
-        </DialogActions>
-      </Dialog>
+      <EditPackageDialog
+        open={editDialogOpen}
+        initialNote={packageData?.note || ''}
+        onClose={() => setEditDialogOpen(false)}
+        onSave={handleSaveEdit}
+      />
 
       <ConfirmDialog
         open={confirmDialog.open}

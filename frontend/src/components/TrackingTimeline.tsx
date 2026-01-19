@@ -6,44 +6,60 @@ import {
   TimelineConnector,
   TimelineContent,
   TimelineDot,
-  TimelineOppositeContent,
 } from '@mui/lab';
+import TimelineOppositeContent, {
+  timelineOppositeContentClasses,
+} from '@mui/lab/TimelineOppositeContent';
+
 import { Paper, Typography, Box, Chip } from '@mui/material';
-import {
-  LocalShipping,
-  CheckCircle,
-  Error as ErrorIcon,
-  AccessTime,
-  LocationOn,
-} from '@mui/icons-material';
+import { LocationOn } from '@mui/icons-material';
 import { TrackingEvent, PackageStatus } from '../types';
 import { format } from 'date-fns';
 import { useCouriers } from '../contexts/CourierContext';
 import { getFaviconUrl } from '../utils/favicon';
+import deliveredImage from '../assets/delivered.png';
+import deliveryImage from '../assets/delivery.png';
+import packageErrorImage from '../assets/package_error.png';
+import pendingImage from '../assets/pending.png';
+import customsImage from '../assets/customs.png';
+import airplaneImage from '../assets/airplane.png';
+import truckImage from '../assets/truck.png';
+import packageImage from '../assets/package.png';
 
 interface TrackingTimelineProps {
   events: TrackingEvent[];
   loading?: boolean;
 }
 
-const getStatusIcon = (status: PackageStatus) => {
+const getStatusIcon = (status: PackageStatus, description?: string) => {
+  const iconStyle = { height: '25px', width: '25px', objectFit: 'contain' as const };
+
   switch (status) {
     case PackageStatus.DELIVERED:
-      return <CheckCircle />;
+      return <img src={deliveredImage} alt="" style={iconStyle} />;
     case PackageStatus.OUT_FOR_DELIVERY:
-      return <LocalShipping />;
-    case PackageStatus.IN_TRANSIT:
-      return <LocalShipping />;
+      return <img src={deliveryImage} alt="" style={iconStyle} />;
     case PackageStatus.EXCEPTION:
-      return <ErrorIcon />;
+      return <img src={packageErrorImage} alt="" style={iconStyle} />;
     case PackageStatus.PENDING:
-      return <AccessTime />;
+      return <img src={pendingImage} alt="" style={iconStyle} />;
+    case PackageStatus.IN_TRANSIT:
+      if (description) {
+        const lowerDesc = description.toLowerCase();
+        if (lowerDesc.includes('customs') || lowerDesc.includes('import') || lowerDesc.includes('export')) {
+          return <img src={customsImage} alt="" style={iconStyle} />;
+        }
+        if (lowerDesc.includes('airport') || lowerDesc.includes('flight') || lowerDesc.includes('country')) {
+          return <img src={airplaneImage} alt="" style={iconStyle} />;
+        }
+      }
+      return <img src={truckImage} alt="" style={iconStyle} />;
     default:
-      return <LocationOn />;
+      return <img src={packageImage} alt="" style={iconStyle} />;
   }
 };
 
-const getStatusColor = (status: PackageStatus): 'primary' | 'success' | 'error' | 'warning' | 'grey' => {
+const getStatusColorForDot = (status: PackageStatus): 'primary' | 'success' | 'error' | 'warning' | 'grey' => {
   switch (status) {
     case PackageStatus.DELIVERED:
       return 'success';
@@ -57,6 +73,23 @@ const getStatusColor = (status: PackageStatus): 'primary' | 'success' | 'error' 
       return 'warning';
     default:
       return 'grey';
+  }
+};
+
+const getStatusColorForChip = (status: PackageStatus): 'primary' | 'success' | 'error' | 'warning' | 'default' => {
+  switch (status) {
+    case PackageStatus.DELIVERED:
+      return 'success';
+    case PackageStatus.OUT_FOR_DELIVERY:
+      return 'primary';
+    case PackageStatus.IN_TRANSIT:
+      return 'primary';
+    case PackageStatus.EXCEPTION:
+      return 'error';
+    case PackageStatus.PENDING:
+      return 'warning';
+    default:
+      return 'default';
   }
 };
 
@@ -80,14 +113,14 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
           No tracking events yet
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Click "Refresh Tracking" to fetch the latest updates
+          "Refresh Tracking" to fetch the latest updates
         </Typography>
       </Paper>
     );
   }
 
   return (
-    <Timeline position="right">
+    <Timeline position="right" sx={{ [`& .${timelineOppositeContentClasses.root}`]: { flex: 0.2 }, }}>
       {events.map((event, index) => {
         // Check if courier changed from previous event
         const prevEvent = index < events.length - 1 ? events[index + 1] : null;
@@ -95,41 +128,45 @@ const TrackingTimeline: React.FC<TrackingTimelineProps> = ({ events, loading = f
 
         return (
         <TimelineItem key={event.id}>
+          <TimelineOppositeContent>
+              <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {/* @ts-expect-error date-fns v3 type issue */}
+                    {format(new Date(event.timestamp), 'MMM dd, yyyy')}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {/* @ts-expect-error date-fns v3 type issue */}
+                    {format(new Date(event.timestamp), 'HH:mm')}
+                  </Typography>
+                </Box>
+          </TimelineOppositeContent>
+
           <TimelineSeparator>
-            <TimelineDot color={getStatusColor(event.status)}>
-              {getStatusIcon(event.status)}
+            <TimelineDot color={getStatusColorForDot(event.status)} variant="outlined" sx={{p:1}}>
+              {getStatusIcon(event.status, event.description)}
             </TimelineDot>
             {index < events.length - 1 && <TimelineConnector />}
           </TimelineSeparator>
 
-          <TimelineContent sx={{ py: 2 }}>
+          <TimelineContent >
             <Paper elevation={2} sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+              <Box sx={{ display: 'flex',  alignItems: 'center', mb: 1, gap:2 }}>
                 <Chip
                   label={event.status}
-                  color={getStatusColor(event.status)}
+                  color={getStatusColorForChip(event.status)}
                   size="small"
                 />
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {format(new Date(event.timestamp), 'MMM dd, yyyy')}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {format(new Date(event.timestamp), 'HH:mm')}
-                  </Typography>
-                </Box>
+                {event.location && (
+                <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LocationOn fontSize="small" />
+                  {event.location}
+                </Typography>
+              )}
               </Box>
 
               {event.description && (
                 <Typography variant="body1" sx={{ fontWeight: 500, mb: 1 }}>
                   {event.description}
-                </Typography>
-              )}
-
-              {event.location && (
-                <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <LocationOn fontSize="small" />
-                  {event.location}
                 </Typography>
               )}
 

@@ -1,14 +1,36 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import datetime
-from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus
+import re
+from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation
 from app.models import Package, PackageCreate, PackageUpdate, TrackingEvent
 from app.api.auth import get_current_user
 from app.services.ship24_service import Ship24Service, Ship24Error
+from app.services.geocoding_service import get_geocoding_service
 import uuid
 
 router = APIRouter()
+
+
+def extract_location_from_description(description: str) -> Optional[str]:
+    """
+    Extract location from tracking event descriptions that contain bracketed locations.
+    Examples:
+        "[Shatian Town] Processing at sorting center" -> "Shatian Town"
+        "[SHANGHAI CITY] Departed from facility" -> "SHANGHAI CITY"
+        "Package delivered" -> None
+    """
+    if not description:
+        return None
+
+    # Match text within square brackets at the start of the description
+    match = re.match(r'^\[([^\]]+)\]', description)
+    if match:
+        location = match.group(1).strip()
+        return location
+
+    return None
 
 
 @router.get("", response_model=List[Package])
@@ -48,7 +70,7 @@ async def create_package(
     try:
         result = await ship24.track_package(
             package.tracking_number,
-            package.courier.value if package.courier else None
+            package.courier
         )
 
         # Populate tracking data
@@ -69,11 +91,37 @@ async def create_package(
 
         # Save tracking events
         for event_data in result["events"]:
+            location_str = event_data.get("location")
+
+            # If no location provided, try to extract from description
+            if not location_str:
+                description = event_data.get("description", "")
+                location_str = extract_location_from_description(description)
+
+            # Ensure location exists in locations table
+            if location_str:
+                existing_location = db.query(DBLocation).filter(
+                    DBLocation.location_string == location_str
+                ).first()
+
+                if not existing_location:
+                    # Create new location entry
+                    geocoding_service = get_geocoding_service()
+                    normalized = geocoding_service.normalize_location(location_str)
+                    new_location = DBLocation(
+                        location_string=location_str,
+                        normalized_location=normalized,
+                        geocoding_failed=False
+                    )
+                    db.add(new_location)
+                    db.flush()  # Flush to make it available for the event
+
             db_event = DBTrackingEvent(
                 id=str(uuid.uuid4()),
                 package_id=package_id,
                 status=event_data["status"],
-                location=event_data.get("location"),
+                location=location_str,
+                location_id=location_str if location_str else None,  # Link to location
                 timestamp=event_data["timestamp"],
                 description=event_data.get("description"),
                 courier_event_code=event_data.get("courier_event_code")
@@ -87,6 +135,20 @@ async def create_package(
     db.add(db_package)
     db.commit()
     db.refresh(db_package)
+
+    # Update last_location from most recent event if Ship24 didn't provide it
+    if not db_package.last_location:
+        latest_event = db.query(DBTrackingEvent).filter(
+            DBTrackingEvent.package_id == package_id,
+            DBTrackingEvent.location != None,
+            DBTrackingEvent.location != ''
+        ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+        if latest_event and latest_event.location:
+            db_package.last_location = latest_event.location
+            db.commit()
+            db.refresh(db_package)
+
     return db_package
 
 

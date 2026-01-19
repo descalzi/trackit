@@ -26,21 +26,12 @@ export enum PackageStatus {
   UNKNOWN = 'Unknown',
 }
 
-// Courier Type enum
-export enum CourierType {
-  EVRI = 'Evri',
-  ROYAL_MAIL = 'Royal Mail',
-  DPD = 'DPD',
-  AUTO_DETECT = 'Auto Detect',
-  OTHER = 'Other',
-}
-
 // Package types
 export interface Package {
   id: string;
   user_id: string;
   tracking_number: string;
-  courier?: CourierType;
+  courier?: string;  // Courier code (e.g., "evri", "dhl")
   note?: string;
   ship24_tracker_id?: string;
   last_status?: PackageStatus;
@@ -58,12 +49,12 @@ export interface Package {
 
 export interface PackageCreate {
   tracking_number: string;
-  courier?: CourierType;
+  courier?: string;  // Courier code (e.g., "evri", "dhl")
   note?: string;
 }
 
 export interface PackageUpdate {
-  courier?: CourierType;
+  courier?: string;  // Courier code (e.g., "evri", "dhl")
   note?: string;
   archived?: boolean;
 }
@@ -112,4 +103,45 @@ export interface Courier {
   countryCode: string | null;
   requiredFields: string[] | null;
   isDeprecated: boolean;
+}
+
+// Geocoding types
+export interface GeocodedLocation {
+  event_id: string;
+  location_string?: string;
+  latitude?: number;
+  longitude?: number;
+  display_name?: string;
+  timestamp: string;
+  status: PackageStatus;
+}
+
+export interface CountryLocation {
+  country_code?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface PackageLocationsResponse {
+  locations: GeocodedLocation[];
+  origin: CountryLocation;
+  destination: CountryLocation;
+}
+
+// Admin types
+export interface LocationAdmin {
+  location_string: string;
+  normalized_location: string;
+  alias?: string;
+  latitude?: number;
+  longitude?: number;
+  display_name?: string;
+  country_code?: string;
+  geocoded_at?: string;
+  geocoding_failed: boolean;
+  usage_count: number;
+}
+
+export interface LocationAliasUpdate {
+  alias?: string;
 }

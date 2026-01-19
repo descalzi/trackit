@@ -11,7 +11,9 @@ import {
   CircularProgress,
   MenuItem,
 } from '@mui/material';
-import { CourierType, PackageCreate } from '../types';
+import { PackageCreate } from '../types';
+import { useCouriers } from '../contexts/CourierContext';
+import { getFaviconUrl } from '../utils/favicon';
 import packageImage from '../assets/package.png';
 
 interface AddPackageDialogProps {
@@ -21,8 +23,9 @@ interface AddPackageDialogProps {
 }
 
 const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAdd }) => {
+  const { couriers } = useCouriers();
   const [trackingNumber, setTrackingNumber] = useState('');
-  const [courier, setCourier] = useState<CourierType | ''>('');
+  const [courier, setCourier] = useState<string>('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,15 +97,31 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
             select
             label="Courier (Optional)"
             value={courier}
-            onChange={(e) => setCourier(e.target.value as CourierType | '')}
+            onChange={(e) => setCourier(e.target.value)}
             helperText="Leave blank for auto-detection"
             fullWidth
           >
             <MenuItem value="">Auto Detect</MenuItem>
-            <MenuItem value={CourierType.EVRI}>Evri</MenuItem>
-            <MenuItem value={CourierType.ROYAL_MAIL}>Royal Mail</MenuItem>
-            <MenuItem value={CourierType.DPD}>DPD</MenuItem>
-            <MenuItem value={CourierType.OTHER}>Other</MenuItem>
+            {couriers
+              .filter(c => !c.isDeprecated)
+              .sort((a, b) => a.courierName.localeCompare(b.courierName))
+              .map((c) => (
+                <MenuItem key={c.courierCode} value={c.courierCode}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {c.website && (
+                      <img
+                        src={getFaviconUrl(c.website, 16)}
+                        alt=""
+                        style={{ width: 16, height: 16 }}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    )}
+                    <span>{c.courierName}</span>
+                  </Box>
+                </MenuItem>
+              ))}
           </TextField>
 
           <TextField

@@ -1,13 +1,18 @@
-import React from 'react';
-import { Box, Container, Typography, Paper } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Container, Typography, Paper, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import { GoogleLogin } from '@react-oauth/google';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../api/client';
+import logoImage from '../assets/logo.png';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const [errorDialog, setErrorDialog] = useState<{ open: boolean; message: string }>({
+    open: false,
+    message: '',
+  });
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
@@ -19,8 +24,15 @@ const LoginPage: React.FC = () => {
     } catch (error) {
       console.error('Login failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Login failed: ${errorMessage}\n\nCheck the browser console for details.`);
+      setErrorDialog({
+        open: true,
+        message: `Login failed: ${errorMessage}\n\nCheck the browser console for details.`,
+      });
     }
+  };
+
+  const handleCloseErrorDialog = () => {
+    setErrorDialog({ open: false, message: '' });
   };
 
   return (
@@ -44,23 +56,50 @@ const LoginPage: React.FC = () => {
             width: '100%',
           }}
         >
+          <img
+            src={logoImage}
+            alt="TrackIt Logo"
+            style={{ height: '54px', width: '54px', objectFit: 'contain', marginBottom:1 }}
+          />
           <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
             TrackIt
           </Typography>
           <Typography variant="h6" color="text.secondary" gutterBottom sx={{ mb: 4 }}>
-            Track packages from Evri, Royal Mail, DPD and more
+            Track your deliveries around the world
           </Typography>
 
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
             onError={() => {
               console.error('Login Failed');
-              alert('Login failed. Please try again.');
+              setErrorDialog({
+                open: true,
+                message: 'Login failed. Please try again.',
+              });
             }}
             useOneTap
           />
         </Paper>
       </Box>
+
+      <Dialog
+        open={errorDialog.open}
+        onClose={handleCloseErrorDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Login Error</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ whiteSpace: 'pre-line' }}>
+            {errorDialog.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseErrorDialog} variant="contained">
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

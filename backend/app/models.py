@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from app.database import PackageStatus, CourierType
+from app.database import PackageStatus
 
 
 # Authentication models
@@ -32,7 +32,7 @@ class AuthResponse(BaseModel):
 class PackageBase(BaseModel):
     """Base package model"""
     tracking_number: str
-    courier: Optional[CourierType] = None
+    courier: Optional[str] = None  # Courier code (e.g., "evri", "dhl")
     note: Optional[str] = None
 
 
@@ -43,7 +43,7 @@ class PackageCreate(PackageBase):
 
 class PackageUpdate(BaseModel):
     """Package update model - all fields optional"""
-    courier: Optional[CourierType] = None
+    courier: Optional[str] = None  # Courier code (e.g., "evri", "dhl")
     note: Optional[str] = None
     archived: Optional[bool] = None
 
@@ -104,3 +104,52 @@ class TrackingLookupResponse(BaseModel):
     events: List[TrackingEventData]
     estimated_delivery: Optional[datetime] = None
     ship24_tracker_id: Optional[str] = None
+
+
+# Geocoding models
+class GeocodedLocation(BaseModel):
+    """Geocoded location with event details"""
+    event_id: str
+    location_string: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    display_name: Optional[str] = None
+    timestamp: datetime
+    status: PackageStatus
+
+
+class CountryLocation(BaseModel):
+    """Country location information"""
+    country_code: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class PackageLocationsResponse(BaseModel):
+    """Response model for package locations"""
+    locations: List[GeocodedLocation]
+    origin: CountryLocation
+    destination: CountryLocation
+
+
+# Admin models
+class LocationAdmin(BaseModel):
+    """Location model for admin page"""
+    location_string: str
+    normalized_location: str
+    alias: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    display_name: Optional[str] = None
+    country_code: Optional[str] = None
+    geocoded_at: Optional[datetime] = None
+    geocoding_failed: bool
+    usage_count: int = 0  # Number of events using this location
+
+    class Config:
+        from_attributes = True
+
+
+class LocationAliasUpdate(BaseModel):
+    """Request model for updating location alias"""
+    alias: Optional[str] = None

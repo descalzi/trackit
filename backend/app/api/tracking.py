@@ -1,14 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict
 from datetime import datetime
-from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus
-from app.models import TrackingLookupRequest, TrackingLookupResponse, Package, TrackingEventData
+import asyncio
+import re
+from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation, SessionLocal
+from app.models import (
+    TrackingLookupRequest, TrackingLookupResponse, Package, TrackingEventData,
+    PackageLocationsResponse, GeocodedLocation, CountryLocation
+)
 from app.api.auth import get_current_user
 from app.services.ship24_service import Ship24Service, Ship24Error, Ship24RateLimitError, Ship24NotFoundError
+from app.services.geocoding_service import get_geocoding_service
 import uuid
 
 router = APIRouter()
+
+
+def extract_location_from_description(description: str) -> Optional[str]:
+    """
+    Extract location from tracking event descriptions that contain bracketed locations.
+    Examples:
+        "[Shatian Town] Processing at sorting center" -> "Shatian Town"
+        "[SHANGHAI CITY] Departed from facility" -> "SHANGHAI CITY"
+        "Package delivered" -> None
+    """
+    if not description:
+        return None
+
+    # Match text within square brackets at the start of the description
+    match = re.match(r'^\[([^\]]+)\]', description)
+    if match:
+        location = match.group(1).strip()
+        print(f"  Extracted location from description: '{location}' from '{description}'")
+        return location
+
+    return None
 
 # In-memory cache for couriers (refreshed periodically)
 _couriers_cache: Optional[List[Dict]] = None
@@ -128,6 +155,8 @@ async def refresh_tracking(
 
         # Save new events (deduplicate by timestamp + description)
         print(f"DEBUG: Processing {len(result['events'])} events from Ship24")
+        new_locations = set()
+
         for event_data in result["events"]:
             # Check if event already exists
             existing_event = db.query(DBTrackingEvent).filter(
@@ -138,11 +167,39 @@ async def refresh_tracking(
 
             if not existing_event:
                 print(f"DEBUG: Saving new event: {event_data.get('description')} at {event_data['timestamp']}")
+                location_str = event_data.get("location")
+
+                # If no location provided, try to extract from description
+                if not location_str:
+                    description = event_data.get("description", "")
+                    location_str = extract_location_from_description(description)
+
+                # Ensure location exists in locations table
+                if location_str:
+                    existing_location = db.query(DBLocation).filter(
+                        DBLocation.location_string == location_str
+                    ).first()
+
+                    if not existing_location:
+                        # Create new location entry
+                        geocoding_service = get_geocoding_service()
+                        normalized = geocoding_service.normalize_location(location_str)
+                        new_location = DBLocation(
+                            location_string=location_str,
+                            normalized_location=normalized,
+                            geocoding_failed=False
+                        )
+                        db.add(new_location)
+                        db.flush()  # Flush to make it available for the event
+                        new_locations.add(location_str)
+                        print(f"  Created new location entry: {location_str}")
+
                 db_event = DBTrackingEvent(
                     id=str(uuid.uuid4()),
                     package_id=package_id,
                     status=event_data["status"],
-                    location=event_data.get("location"),
+                    location=location_str,
+                    location_id=location_str if location_str else None,  # Link to location
                     timestamp=event_data["timestamp"],
                     description=event_data.get("description"),
                     courier_event_code=event_data.get("courier_event_code")
@@ -154,6 +211,25 @@ async def refresh_tracking(
         db.commit()
         db.refresh(db_package)
 
+        # Update last_location from most recent event if Ship24 didn't provide it
+        if not db_package.last_location:
+            latest_event = db.query(DBTrackingEvent).filter(
+                DBTrackingEvent.package_id == package_id,
+                DBTrackingEvent.location != None,
+                DBTrackingEvent.location != ''
+            ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+            if latest_event and latest_event.location:
+                db_package.last_location = latest_event.location
+                db.commit()
+                db.refresh(db_package)
+                print(f"DEBUG: Set last_location to most recent event location: {latest_event.location}")
+
+        # Trigger background geocoding for new locations
+        if new_locations:
+            print(f"DEBUG: Triggering background geocoding for {len(new_locations)} new locations")
+            asyncio.create_task(_geocode_new_locations(list(new_locations)))
+
         return db_package
 
     except Ship24RateLimitError:
@@ -162,3 +238,99 @@ async def refresh_tracking(
         raise HTTPException(status_code=404, detail="Tracking number not found.")
     except Ship24Error as e:
         raise HTTPException(status_code=500, detail=f"Tracking service error: {str(e)}")
+
+
+async def _geocode_new_locations(location_strings: List[str]):
+    """Background task to geocode newly added locations."""
+    print(f"Starting background geocoding for {len(location_strings)} new locations")
+    db = SessionLocal()
+    geocoding_service = get_geocoding_service()
+    try:
+        for location_str in location_strings:
+            await geocoding_service.geocode_and_cache(location_str, db)
+        print(f"Finished geocoding new locations")
+    except Exception as e:
+        print(f"Background geocoding error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
+async def _background_geocode(package_id: str, db: Session):
+    """Background task to geocode package locations."""
+    print(f"Starting background geocoding for package {package_id}")
+    geocoding_service = get_geocoding_service()
+    try:
+        count = await geocoding_service.batch_geocode_package_events(package_id, db)
+        print(f"Geocoded {count} locations for package {package_id}")
+    except Exception as e:
+        print(f"Background geocoding error for package {package_id}: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
+@router.get("/locations/{package_id}", response_model=PackageLocationsResponse)
+async def get_package_locations(
+    package_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get geocoded locations for a package's tracking events.
+    Triggers background geocoding for any locations that haven't been geocoded yet.
+    """
+    # Verify package ownership
+    db_package = db.query(DBPackage).filter(
+        DBPackage.id == package_id,
+        DBPackage.user_id == current_user.id
+    ).first()
+
+    if not db_package:
+        raise HTTPException(status_code=404, detail="Package not found")
+
+    # Trigger background geocoding for un-geocoded locations
+    # Create a new session for the background task
+    background_tasks.add_task(_background_geocode, package_id, SessionLocal())
+
+    # Get all tracking events with their locations
+    events = db.query(DBTrackingEvent).filter(
+        DBTrackingEvent.package_id == package_id
+    ).order_by(DBTrackingEvent.timestamp).all()
+
+    # Build response
+    locations = []
+    for event in events:
+        # Get location data if available
+        location_data = None
+        if event.location_id:
+            location_data = db.query(DBLocation).filter(
+                DBLocation.location_string == event.location_id
+            ).first()
+
+        locations.append(GeocodedLocation(
+            event_id=event.id,
+            location_string=event.location,
+            latitude=location_data.latitude if location_data else None,
+            longitude=location_data.longitude if location_data else None,
+            display_name=location_data.display_name if location_data else None,
+            timestamp=event.timestamp,
+            status=event.status
+        ))
+
+    # Get origin and destination country info
+    origin = CountryLocation(
+        country_code=db_package.origin_country
+    )
+    destination = CountryLocation(
+        country_code=db_package.destination_country
+    )
+
+    return PackageLocationsResponse(
+        locations=locations,
+        origin=origin,
+        destination=destination
+    )

@@ -8,7 +8,10 @@ import {
   TrackingEvent,
   TrackingLookupRequest,
   TrackingLookupResponse,
-  Courier
+  Courier,
+  PackageLocationsResponse,
+  LocationAdmin,
+  LocationAliasUpdate
 } from '../types';
 import { getAuthHeader } from '../utils/auth';
 
@@ -202,6 +205,56 @@ export const apiClient = {
      */
     getCouriers: (): Promise<{ couriers: Courier[] }> => {
       return apiFetch<{ couriers: Courier[] }>('/api/tracking/couriers');
+    },
+
+    /**
+     * Get geocoded locations for a package
+     */
+    getLocations: (packageId: string): Promise<PackageLocationsResponse> => {
+      return apiFetch<PackageLocationsResponse>(
+        `/api/tracking/locations/${packageId}`,
+        { headers: getAuthHeader() }
+      );
+    },
+  },
+
+  // Admin endpoints
+  admin: {
+    /**
+     * Get all locations with optional filter for failed geocoding
+     */
+    getLocations: (failedOnly: boolean = false): Promise<LocationAdmin[]> => {
+      return apiFetch<LocationAdmin[]>(
+        `/api/admin/locations?failed_only=${failedOnly}`,
+        { headers: getAuthHeader() }
+      );
+    },
+
+    /**
+     * Update alias for a location
+     */
+    updateLocationAlias: (locationString: string, update: LocationAliasUpdate): Promise<{ success: boolean; message: string }> => {
+      return apiFetch<{ success: boolean; message: string }>(
+        `/api/admin/locations/${encodeURIComponent(locationString)}/alias`,
+        {
+          method: 'PUT',
+          headers: getAuthHeader(),
+          body: JSON.stringify(update),
+        }
+      );
+    },
+
+    /**
+     * Retry geocoding for a location
+     */
+    retryGeocode: (locationString: string): Promise<{ success: boolean; message: string }> => {
+      return apiFetch<{ success: boolean; message: string }>(
+        `/api/admin/locations/${encodeURIComponent(locationString)}/retry`,
+        {
+          method: 'POST',
+          headers: getAuthHeader(),
+        }
+      );
     },
   },
 };
