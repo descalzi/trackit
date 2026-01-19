@@ -34,7 +34,7 @@ class GeocodingService:
             return ""
 
         # Remove common distribution center suffixes
-        location = re.sub(r'\s+(DO|DC|DISTRIBUTION CENTER|INTERNATIONAL DISTRIBUTION CENTER)$',
+        location = re.sub(r'\s+(DO|DC|MC|DISTRIBUTION CENTER|INTERNATIONAL DISTRIBUTION CENTER)$',
                          '', location, flags=re.IGNORECASE)
 
         # Normalize whitespace

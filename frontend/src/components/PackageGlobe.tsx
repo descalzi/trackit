@@ -182,35 +182,14 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
       .backgroundColor(theme.palette.mode === 'dark' ? '#0a0a0a' : '#ffffff')
       .width(globeRef.current.clientWidth)
       .height(500)
-      // Location markers - show pins at each location
-      .pointsData(locations)
+      // Location markers - only show pins when there's exactly one location
+      // For multiple locations, the arcs will show the journey
+      .pointsData(locations.length === 1 ? locations : [])
       .pointLat('latitude')
       .pointLng('longitude')
       .pointColor((d: any) => d.color)
       .pointAltitude(0.01)
       .pointRadius(0.3)
-      .pointLabel((d: any) => {
-        const loc = d as GlobePoint;
-        return `
-          <div style="
-            background: ${alpha(theme.palette.background.paper, 0.95)};
-            padding: 8px 12px;
-            border-radius: 4px;
-            color: ${theme.palette.text.primary};
-            font-family: ${theme.typography.fontFamily};
-            font-size: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            max-width: 250px;
-          ">
-            <strong>${loc.location_string || 'Unknown'}</strong><br/>
-            <span style="color: ${theme.palette.text.secondary};">
-              ${loc.status}<br/>
-              ${new Date(loc.timestamp).toLocaleString()}
-            </span>
-            ${loc.display_name ? `<br/><small>${loc.display_name}</small>` : ''}
-          </div>
-        `;
-      })
       // Arcs - show package journey between locations
       .arcsData(arcs)
       .arcStartLat('startLat')
@@ -218,8 +197,6 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
       .arcEndLat('endLat')
       .arcEndLng('endLng')
       .arcColor((d: any) => d.color)
-      // .arcDashLength(0.4)
-      // .arcDashGap(0.2)
       .arcStroke((d: any) => d.stroke || 0.5)
       .arcAltitude((d: any) => d.altitude || 0.1)
       // Controls
@@ -235,7 +212,7 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
         globe.pointOfView({
           lat: lastLoc.latitude,
           lng: lastLoc.longitude,
-          altitude: 0.8,
+          altitude: 0.2
         }, 1000);
       }
     }
