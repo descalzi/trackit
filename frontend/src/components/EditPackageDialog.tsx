@@ -7,33 +7,50 @@ import {
   TextField,
   Button,
   Box,
+  MenuItem,
 } from '@mui/material';
+import { apiClient } from '../api/client';
 
 interface EditPackageDialogProps {
   open: boolean;
   initialNote?: string;
+  initialDeliveryLocationId?: string;
   onClose: () => void;
-  onSave: (note: string) => Promise<void>;
+  onSave: (note: string, deliveryLocationId?: string | null) => Promise<void>;
 }
 
 const EditPackageDialog: React.FC<EditPackageDialogProps> = ({
   open,
   initialNote = '',
+  initialDeliveryLocationId = '',
   onClose,
   onSave,
 }) => {
   const [note, setNote] = useState(initialNote);
+  const [deliveryLocationId, setDeliveryLocationId] = useState(initialDeliveryLocationId);
+  const [deliveryLocations, setDeliveryLocations] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Update local note when initialNote changes
+  // Fetch delivery locations when dialog opens
+  useEffect(() => {
+    if (open) {
+      apiClient.deliveryLocations.getAll()
+        .then(locations => setDeliveryLocations(locations))
+        .catch(err => console.error('Failed to fetch delivery locations:', err));
+    }
+  }, [open]);
+
+  // Update local state when props change
   useEffect(() => {
     setNote(initialNote);
-  }, [initialNote]);
+    setDeliveryLocationId(initialDeliveryLocationId);
+  }, [initialNote, initialDeliveryLocationId]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(note);
+      // Send null when empty string to explicitly clear the delivery location
+      await onSave(note, deliveryLocationId === '' ? null : deliveryLocationId);
       onClose();
     } catch (err) {
       console.error('Failed to save package:', err);
@@ -55,6 +72,35 @@ const EditPackageDialog: React.FC<EditPackageDialogProps> = ({
             fullWidth
             autoFocus
           />
+
+          <TextField
+            select
+            label="Delivery Location (Optional)"
+            value={deliveryLocationId}
+            onChange={(e) => setDeliveryLocationId(e.target.value)}
+            helperText={deliveryLocations.length === 0 ? "Add delivery locations in Setup" : "Where will this package be delivered?"}
+            fullWidth
+            slotProps={{
+              inputLabel: { shrink: true },
+              select: {
+                displayEmpty: true,
+                MenuProps: {
+                  PaperProps: {
+                    style: {
+                      maxHeight: 300,
+                    },
+                  },
+                },
+              },
+            }}
+          >
+            <MenuItem value="">Don't set a deliverylocation</MenuItem>
+            {deliveryLocations.map((location) => (
+              <MenuItem key={location.id} value={location.id}>
+                {location.name}
+              </MenuItem>
+            ))}
+          </TextField>
         </Box>
       </DialogContent>
       <DialogActions>

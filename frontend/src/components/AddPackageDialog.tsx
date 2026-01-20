@@ -14,6 +14,7 @@ import {
 import { PackageCreate } from '../types';
 import { useCouriers } from '../contexts/CourierContext';
 import { getFaviconUrl } from '../utils/favicon';
+import { apiClient } from '../api/client';
 import packageImage from '../assets/package.png';
 
 interface AddPackageDialogProps {
@@ -27,13 +28,31 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
   const [trackingNumber, setTrackingNumber] = useState('');
   const [courier, setCourier] = useState<string>('');
   const [note, setNote] = useState('');
+  const [deliveryLocationId, setDeliveryLocationId] = useState<string>('');
+  const [deliveryLocations, setDeliveryLocations] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Fetch delivery locations when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      apiClient.deliveryLocations.getAll()
+        .then(locations => {
+          setDeliveryLocations(locations);
+          // Auto-select if only one location
+          if (locations.length === 1) {
+            setDeliveryLocationId(locations[0].id);
+          }
+        })
+        .catch(err => console.error('Failed to fetch delivery locations:', err));
+    }
+  }, [open]);
 
   const handleReset = () => {
     setTrackingNumber('');
     setCourier('');
     setNote('');
+    setDeliveryLocationId('');
     setError(null);
   };
 
@@ -57,6 +76,7 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
         tracking_number: trackingNumber.trim(),
         courier: courier || undefined,
         note: note.trim() || undefined,
+        delivery_location_id: deliveryLocationId || undefined,
       };
 
       await onAdd(packageData);
@@ -134,10 +154,39 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
           </TextField>
 
           <TextField
+            select
+            label="Delivery Location (Optional)"
+            value={deliveryLocationId}
+            onChange={(e) => setDeliveryLocationId(e.target.value)}
+            helperText={deliveryLocations.length === 0 ? "Add delivery locations in Setup" : "Where will this package be delivered?"}
+            fullWidth
+            slotProps={{
+              inputLabel: { shrink: true },
+              select: {
+                displayEmpty: true,
+                MenuProps: {
+                  PaperProps: {
+                    style: {
+                      maxHeight: 300,
+                    },
+                  },
+                },
+              },
+            }}
+          >
+            <MenuItem value="">Don't set a delivery location</MenuItem>
+            {deliveryLocations.map((location) => (
+              <MenuItem key={location.id} value={location.id}>
+                {location.name}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
             label="Note (Optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g., Amazon Order #123"
+            placeholder="e.g., Dog Toys"
             fullWidth
           />
         </Box>

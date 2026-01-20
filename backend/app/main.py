@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, packages, tracking, admin
+from app.api import auth, packages, tracking, admin, delivery_locations
 from app.database import init_db, SessionLocal
 from app.services.geocoding_service import get_geocoding_service
 import asyncio
@@ -35,6 +35,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(packages.router, prefix="/api/packages", tags=["Packages"])
 app.include_router(tracking.router, prefix="/api/tracking", tags=["Tracking"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(delivery_locations.router, prefix="/api", tags=["Delivery Locations"])
 
 
 async def geocode_pending_locations():

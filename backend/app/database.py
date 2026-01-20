@@ -41,6 +41,28 @@ class DBUser(Base):
 
     # Relationships
     packages = relationship("DBPackage", back_populates="user", cascade="all, delete-orphan")
+    delivery_locations = relationship("DBDeliveryLocation", back_populates="user", cascade="all, delete-orphan")
+
+
+class DBDeliveryLocation(Base):
+    """Delivery Location model - stores user-defined delivery locations"""
+    __tablename__ = "delivery_locations"
+
+    id = Column(String, primary_key=True, index=True)  # UUID
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)  # Location name (e.g., "Home", "Office")
+    address = Column(String, nullable=False)  # User-provided address
+    latitude = Column(Float, nullable=False)  # Required for map display
+    longitude = Column(Float, nullable=False)  # Required for map display
+    display_name = Column(String, nullable=True)  # Full address from geocoding
+    country_code = Column(String(2), nullable=True)
+    geocoded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Relationships
+    user = relationship("DBUser", back_populates="delivery_locations")
+    packages = relationship("DBPackage", back_populates="delivery_location")
 
 
 class DBPackage(Base):
@@ -52,6 +74,7 @@ class DBPackage(Base):
     tracking_number = Column(String, nullable=False, index=True)
     courier = Column(String, nullable=True)  # Optional courier code (e.g., "evri", "dhl")
     note = Column(String, nullable=True)  # User note for package
+    delivery_location_id = Column(String, ForeignKey("delivery_locations.id"), nullable=True)  # Target delivery location
 
     # Ship24 cached data
     ship24_tracker_id = Column(String, nullable=True)  # Ship24 tracker ID for caching
@@ -72,6 +95,7 @@ class DBPackage(Base):
 
     # Relationships
     user = relationship("DBUser", back_populates="packages")
+    delivery_location = relationship("DBDeliveryLocation", back_populates="packages")
     tracking_events = relationship("DBTrackingEvent", back_populates="package", cascade="all, delete-orphan")
 
 
@@ -102,6 +126,7 @@ class DBTrackingEvent(Base):
     status = Column(SQLEnum(PackageStatus), nullable=False)
     location = Column(String, nullable=True)  # Event location (keep for backward compatibility)
     location_id = Column(String, ForeignKey("locations.location_string"), nullable=True)  # FK to locations
+    delivery_location_id = Column(String, ForeignKey("delivery_locations.id"), nullable=True)  # FK to delivery_locations (for delivered packages)
     timestamp = Column(DateTime, nullable=False, index=True)  # Event timestamp from courier
     description = Column(Text, nullable=True)  # Event description
     courier_event_code = Column(String, nullable=True)  # Raw courier event code (status code)
@@ -111,6 +136,7 @@ class DBTrackingEvent(Base):
     # Relationships
     package = relationship("DBPackage", back_populates="tracking_events")
     location_ref = relationship("DBLocation", back_populates="tracking_events")
+    delivery_location_ref = relationship("DBDeliveryLocation")
 
 
 def init_db():

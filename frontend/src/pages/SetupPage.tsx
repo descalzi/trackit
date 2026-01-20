@@ -18,6 +18,10 @@ import {
   FormControlLabel,
   Switch,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -29,7 +33,7 @@ import {
   ArrowBack,
 } from '@mui/icons-material';
 import { apiClient } from '../api/client';
-import { LocationAdmin } from '../types';
+import { LocationAdmin, DeliveryLocation } from '../types';
 import refreshImage from '../assets/refresh.png';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,6 +41,8 @@ import { useAuth } from '../contexts/AuthContext';
 const SetupPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // Admin locations state
   const [locations, setLocations] = useState<LocationAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +50,18 @@ const SetupPage: React.FC = () => {
   const [editingLocation, setEditingLocation] = useState<string | null>(null);
   const [editAlias, setEditAlias] = useState('');
   const [retryingLocation, setRetryingLocation] = useState<string | null>(null);
+
+  // Delivery locations state
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([]);
+  const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingDeliveryLocation, setEditingDeliveryLocation] = useState<DeliveryLocation | null>(null);
+  const [newLocationName, setNewLocationName] = useState('');
+  const [newLocationAddress, setNewLocationAddress] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const fetchLocations = async () => {
     setLoading(true);
@@ -58,8 +76,22 @@ const SetupPage: React.FC = () => {
     }
   };
 
+  const fetchDeliveryLocations = async () => {
+    setDeliveryLoading(true);
+    setDeliveryError(null);
+    try {
+      const data = await apiClient.deliveryLocations.getAll();
+      setDeliveryLocations(data);
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to fetch delivery locations');
+    } finally {
+      setDeliveryLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchLocations();
+    fetchDeliveryLocations();
   }, [failedOnly]);
 
   const handleEditStart = (location: LocationAdmin) => {
@@ -99,7 +131,83 @@ const SetupPage: React.FC = () => {
     }
   };
 
-  if (loading && locations.length === 0) {
+  // Delivery location handlers
+  const handleOpenAddDialog = () => {
+    setEditingDeliveryLocation(null);
+    setNewLocationName('');
+    setNewLocationAddress('');
+    setShowAddDialog(true);
+  };
+
+  const handleOpenEditDialog = (location: DeliveryLocation) => {
+    setEditingDeliveryLocation(location);
+    setNewLocationName(location.name);
+    setNewLocationAddress(location.address);
+    setShowAddDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setShowAddDialog(false);
+    setEditingDeliveryLocation(null);
+    setNewLocationName('');
+    setNewLocationAddress('');
+    setDeliveryError(null);
+  };
+
+  const handleGeocodeAndSave = async () => {
+    if (!newLocationName.trim() || !newLocationAddress.trim()) {
+      setDeliveryError('Name and address are required');
+      return;
+    }
+
+    setGeocoding(true);
+    setDeliveryError(null);
+
+    try {
+      // First geocode the address to validate it
+      await apiClient.deliveryLocations.geocode({ address: newLocationAddress });
+
+      // If geocoding succeeds, save the location
+      setSaving(true);
+      if (editingDeliveryLocation) {
+        await apiClient.deliveryLocations.update(editingDeliveryLocation.id, {
+          name: newLocationName.trim(),
+          address: newLocationAddress.trim(),
+        });
+      } else {
+        await apiClient.deliveryLocations.create({
+          name: newLocationName.trim(),
+          address: newLocationAddress.trim(),
+        });
+      }
+
+      await fetchDeliveryLocations();
+      handleCloseDialog();
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to save location');
+    } finally {
+      setGeocoding(false);
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteLocation = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this delivery location?')) {
+      return;
+    }
+
+    setDeleting(id);
+    try {
+      await apiClient.deliveryLocations.delete(id);
+      await fetchDeliveryLocations();
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to delete location');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if ((loading || deliveryLoading) && locations.length === 0 && deliveryLocations.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress />
@@ -107,39 +215,163 @@ const SetupPage: React.FC = () => {
     );
   }
 
-  // Non-admin users see a simple message
-  if (!user?.is_admin) {
-    return (
-      <Box>
-        <Button
-          startIcon={<ArrowBack />}
-          onClick={() => navigate('/')}
-          sx={{ mb: 2 }}
-        >
-          Back to Dashboard
-        </Button>
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="h6" color="text.secondary">
-            Nothing to setup yet
-          </Typography>
-        </Paper>
-      </Box>
-    );
-  }
-
   return (
     <Box>
       <Button
-              startIcon={<ArrowBack />}
-              onClick={() => navigate('/')}
-              sx={{ mb: 2 }}
-            >
-              Back to Dashboard
+        startIcon={<ArrowBack />}
+        onClick={() => navigate('/')}
+        sx={{ mb: 2 }}
+      >
+        Back to Dashboard
+      </Button>
+
+      {/* Delivery Locations Section - visible to all users */}
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" component="h1" fontWeight={600}>
+            Delivery Locations
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={handleOpenAddDialog}
+          >
+            Add Location
+          </Button>
+        </Box>
+
+        {deliveryError && (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setDeliveryError(null)}>
+            {deliveryError}
+          </Alert>
+        )}
+
+        {deliveryLocations.length === 0 ? (
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              No delivery locations yet
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Add a delivery location (like "Home" or "Office") to track where your packages are delivered on the map.
+            </Typography>
+          </Paper>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Address</TableCell>
+                  <TableCell>Coordinates</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {deliveryLocations.map((location) => (
+                  <TableRow
+                    key={location.id}
+                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                  >
+                    <TableCell>
+                      <Typography variant="body1" fontWeight={500}>
+                        {location.name}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {location.display_name || location.address}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenEditDialog(location)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteLocation(location.id)}
+                          disabled={deleting === location.id}
+                          color="error"
+                        >
+                          {deleting === location.id ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <CloseIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {/* Add/Edit Delivery Location Dialog */}
+        <Dialog open={showAddDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {editingDeliveryLocation ? 'Edit Delivery Location' : 'Add Delivery Location'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              {deliveryError && <Alert severity="error">{deliveryError}</Alert>}
+
+              <TextField
+                label="Name"
+                value={newLocationName}
+                onChange={(e) => setNewLocationName(e.target.value)}
+                placeholder="e.g., Home, Office, Warehouse"
+                required
+                fullWidth
+                autoFocus
+              />
+
+              <TextField
+                label="Address"
+                value={newLocationAddress}
+                onChange={(e) => setNewLocationAddress(e.target.value)}
+                placeholder="e.g., 123 Main St, New York, NY 10001"
+                required
+                fullWidth
+                multiline
+                rows={2}
+                helperText="Enter a full address for accurate geocoding"
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog} disabled={geocoding || saving}>
+              Cancel
             </Button>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" fontWeight={600}>
-          Locations Editor
-        </Typography>
+            <Button
+              onClick={handleGeocodeAndSave}
+              variant="contained"
+              disabled={geocoding || saving || !newLocationName.trim() || !newLocationAddress.trim()}
+              startIcon={(geocoding || saving) ? <CircularProgress size={20} /> : null}
+            >
+              {geocoding ? 'Validating...' : saving ? 'Saving...' : (editingDeliveryLocation ? 'Update' : 'Add')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+
+      {/* Admin-only Locations Editor Section */}
+      {user?.is_admin && (
+        <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h4" component="h1" fontWeight={600}>
+              Locations Editor
+            </Typography>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <FormControlLabel
             control={
@@ -310,9 +542,11 @@ const SetupPage: React.FC = () => {
         </TableContainer>
       )}
 
-      {loading && locations.length > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-          <CircularProgress size={24} />
+          {loading && locations.length > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          )}
         </Box>
       )}
     </Box>

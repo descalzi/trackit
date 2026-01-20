@@ -34,6 +34,7 @@ export interface Package {
   tracking_number: string;
   courier?: string;  // Courier code (e.g., "evri", "dhl")
   note?: string;
+  delivery_location_id?: string;  // Target delivery location
   ship24_tracker_id?: string;
   last_status?: PackageStatus;
   last_location?: string;
@@ -52,12 +53,14 @@ export interface PackageCreate {
   tracking_number: string;
   courier?: string;  // Courier code (e.g., "evri", "dhl")
   note?: string;
+  delivery_location_id?: string;  // Target delivery location
 }
 
 export interface PackageUpdate {
   courier?: string;  // Courier code (e.g., "evri", "dhl")
   note?: string;
   archived?: boolean;
+  delivery_location_id?: string | null;  // Target delivery location (null to clear)
 }
 
 // Tracking Event types
@@ -147,4 +150,40 @@ export interface LocationAdmin {
 
 export interface LocationAliasUpdate {
   alias?: string;
+}
+
+// Delivery Location types
+export interface DeliveryLocation {
+  id: string;
+  user_id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  display_name?: string;
+  country_code?: string;
+  geocoded_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveryLocationCreate {
+  name: string;
+  address: string;
+}
+
+export interface DeliveryLocationUpdate {
+  name?: string;
+  address?: string;
+}
+
+export interface GeocodeRequest {
+  address: string;
+}
+
+export interface GeocodeResponse {
+  latitude: number;
+  longitude: number;
+  display_name?: string;
+  country_code?: string;
 }

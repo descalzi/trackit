@@ -121,9 +121,9 @@ const PackageDetailPage: React.FC = () => {
     }
   };
 
-  const handleSaveEdit = async (note: string) => {
+  const handleSaveEdit = async (note: string, deliveryLocationId?: string | null) => {
     if (!id) return;
-    await apiClient.packages.update(id, { note });
+    await apiClient.packages.update(id, { note, delivery_location_id: deliveryLocationId });
     await loadPackage();
   };
 
@@ -246,45 +246,44 @@ const PackageDetailPage: React.FC = () => {
           })()}
         </Box>
 
-        {/* Country Route */}
-        {(packageData.origin_country || packageData.destination_country) && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            {packageData.origin_country && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <img
-                  src={`https://flagcdn.com/24x18/${packageData.origin_country.toLowerCase()}.png`}
-                  srcSet={`https://flagcdn.com/48x36/${packageData.origin_country.toLowerCase()}.png 2x, https://flagcdn.com/72x54/${packageData.origin_country.toLowerCase()}.png 3x`}
-                  width="24"
-                  height="18"
-                  alt={packageData.origin_country}
-                  style={{ border: '1px solid #e0e0e0' }}
-                />
-                <Typography variant="body2" color="text.secondary">{packageData.origin_country}</Typography>
-              </Box>
-            )}
-            {packageData.origin_country && packageData.destination_country && (
-              <Typography variant="body2" color="text.secondary">→</Typography>
-            )}
-            {packageData.destination_country && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <img
-                  src={`https://flagcdn.com/24x18/${packageData.destination_country.toLowerCase()}.png`}
-                  srcSet={`https://flagcdn.com/48x36/${packageData.destination_country.toLowerCase()}.png 2x, https://flagcdn.com/72x54/${packageData.destination_country.toLowerCase()}.png 3x`}
-                  width="24"
-                  height="18"
-                  alt={packageData.destination_country}
-                  style={{ border: '1px solid #e0e0e0' }}
-                />
-                <Typography variant="body2" color="text.secondary">{packageData.destination_country}</Typography>
-              </Box>
-            )}
-            {packageData.last_location && (
-              <Typography variant="body1" >
-                📍 {packageData.last_location}
-              </Typography>
-            )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          {/* Country Route */}
+          {packageData.origin_country && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <img
+                src={`https://flagcdn.com/24x18/${packageData.origin_country.toLowerCase()}.png`}
+                srcSet={`https://flagcdn.com/48x36/${packageData.origin_country.toLowerCase()}.png 2x, https://flagcdn.com/72x54/${packageData.origin_country.toLowerCase()}.png 3x`}
+                width="24"
+                height="18"
+                alt={packageData.origin_country}
+                style={{ border: '1px solid #e0e0e0' }}
+              />
+              <Typography variant="body2" color="text.secondary">{packageData.origin_country}</Typography>
+            </Box>
+          )}
+          {packageData.origin_country && packageData.destination_country && (
+            <Typography variant="body2" color="text.secondary">→</Typography>
+          )}
+          {packageData.destination_country && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <img
+                src={`https://flagcdn.com/24x18/${packageData.destination_country.toLowerCase()}.png`}
+                srcSet={`https://flagcdn.com/48x36/${packageData.destination_country.toLowerCase()}.png 2x, https://flagcdn.com/72x54/${packageData.destination_country.toLowerCase()}.png 3x`}
+                width="24"
+                height="18"
+                alt={packageData.destination_country}
+                style={{ border: '1px solid #e0e0e0' }}
+              />
+              <Typography variant="body2" color="text.secondary">{packageData.destination_country}</Typography>
+            </Box>
+          )}
+          {/* Last Location */}
+          {packageData.last_location ? (
+            <Typography variant="body1" >
+              📍 {packageData.last_location}
+            </Typography>
+          ) : null}
           </Box>
-        )}
 
         {packageData.estimated_delivery && (
           <Typography variant="body1" sx={{ mb: 1, color: 'primary.main', fontWeight: 500 }}>
@@ -314,6 +313,7 @@ const PackageDetailPage: React.FC = () => {
       <EditPackageDialog
         open={editDialogOpen}
         initialNote={packageData?.note || ''}
+        initialDeliveryLocationId={packageData?.delivery_location_id || ''}
         onClose={() => setEditDialogOpen(false)}
         onSave={handleSaveEdit}
       />

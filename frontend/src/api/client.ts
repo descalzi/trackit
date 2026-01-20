@@ -11,7 +11,12 @@ import {
   Courier,
   PackageLocationsResponse,
   LocationAdmin,
-  LocationAliasUpdate
+  LocationAliasUpdate,
+  DeliveryLocation,
+  DeliveryLocationCreate,
+  DeliveryLocationUpdate,
+  GeocodeRequest,
+  GeocodeResponse
 } from '../types';
 import { getAuthHeader } from '../utils/auth';
 
@@ -214,6 +219,64 @@ export const apiClient = {
       return apiFetch<PackageLocationsResponse>(
         `/api/tracking/locations/${packageId}`,
         { headers: getAuthHeader() }
+      );
+    },
+  },
+
+  // Delivery Location endpoints
+  deliveryLocations: {
+    /**
+     * Get all delivery locations for current user
+     */
+    getAll: (): Promise<DeliveryLocation[]> => {
+      return apiFetch<DeliveryLocation[]>('/api/delivery-locations', {
+        headers: getAuthHeader(),
+      });
+    },
+
+    /**
+     * Geocode an address before creating location
+     */
+    geocode: (request: GeocodeRequest): Promise<GeocodeResponse> => {
+      return apiFetch<GeocodeResponse>('/api/delivery-locations/geocode', {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify(request),
+      });
+    },
+
+    /**
+     * Create a new delivery location
+     */
+    create: (location: DeliveryLocationCreate): Promise<DeliveryLocation> => {
+      return apiFetch<DeliveryLocation>('/api/delivery-locations', {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify(location),
+      });
+    },
+
+    /**
+     * Update a delivery location
+     */
+    update: (id: string, location: DeliveryLocationUpdate): Promise<DeliveryLocation> => {
+      return apiFetch<DeliveryLocation>(`/api/delivery-locations/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeader(),
+        body: JSON.stringify(location),
+      });
+    },
+
+    /**
+     * Delete a delivery location
+     */
+    delete: (id: string): Promise<{ success: boolean; message: string }> => {
+      return apiFetch<{ success: boolean; message: string }>(
+        `/api/delivery-locations/${id}`,
+        {
+          method: 'DELETE',
+          headers: getAuthHeader(),
+        }
       );
     },
   },

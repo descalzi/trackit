@@ -39,7 +39,7 @@ class PackageBase(BaseModel):
 
 class PackageCreate(PackageBase):
     """Package creation model"""
-    pass
+    delivery_location_id: Optional[str] = None  # Target delivery location
 
 
 class PackageUpdate(BaseModel):
@@ -47,12 +47,14 @@ class PackageUpdate(BaseModel):
     courier: Optional[str] = None  # Courier code (e.g., "evri", "dhl")
     note: Optional[str] = None
     archived: Optional[bool] = None
+    delivery_location_id: Optional[str] = None  # Target delivery location
 
 
 class Package(PackageBase):
     """Package response model"""
     id: str
     user_id: str
+    delivery_location_id: Optional[str] = None
     ship24_tracker_id: Optional[str] = None
     last_status: Optional[PackageStatus] = None
     last_location: Optional[str] = None
@@ -155,3 +157,39 @@ class LocationAdmin(BaseModel):
 class LocationAliasUpdate(BaseModel):
     """Request model for updating location alias"""
     alias: Optional[str] = None
+
+
+# Delivery Location models
+class DeliveryLocationCreate(BaseModel):
+    """Request model for creating a delivery location"""
+    name: str
+    address: str
+
+
+class DeliveryLocationUpdate(BaseModel):
+    """Request model for updating a delivery location"""
+    name: Optional[str] = None
+    address: Optional[str] = None
+
+
+class DeliveryLocation(BaseModel):
+    """Response model for delivery location"""
+    id: str
+    user_id: str
+    name: str
+    address: str
+    latitude: float
+    longitude: float
+    display_name: Optional[str] = None
+    country_code: Optional[str] = None
+    geocoded_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GeocodeRequest(BaseModel):
+    """Request model for geocoding an address"""
+    address: str

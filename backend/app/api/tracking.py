@@ -4,7 +4,7 @@ from typing import Optional, List, Dict
 from datetime import datetime
 import asyncio
 import re
-from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation, SessionLocal
+from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation, DBDeliveryLocation, SessionLocal
 from app.models import (
     TrackingLookupRequest, TrackingLookupResponse, Package, TrackingEventData,
     PackageLocationsResponse, GeocodedLocation, CountryLocation
@@ -153,6 +153,18 @@ async def refresh_tracking(
         if result["status"] == PackageStatus.DELIVERED and not db_package.delivered_at:
             db_package.delivered_at = datetime.now()
 
+            # If package has a delivery location set, apply it to the delivered event
+            if db_package.delivery_location_id:
+                # Find the most recent DELIVERED event
+                delivered_event = db.query(DBTrackingEvent).filter(
+                    DBTrackingEvent.package_id == package_id,
+                    DBTrackingEvent.status == PackageStatus.DELIVERED
+                ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+                if delivered_event:
+                    # Set the delivery_location_id on the event
+                    delivered_event.delivery_location_id = db_package.delivery_location_id
+
         # Save new events (deduplicate by timestamp + description)
         print(f"DEBUG: Processing {len(result['events'])} events from Ship24")
         new_locations = set()
@@ -173,6 +185,10 @@ async def refresh_tracking(
                 if not location_str:
                     description = event_data.get("description", "")
                     location_str = extract_location_from_description(description)
+
+                # Clean up location string - convert string "null" to None
+                if location_str and location_str.lower() == "null":
+                    location_str = None
 
                 # Ensure location exists in locations table
                 if location_str:
@@ -214,17 +230,35 @@ async def refresh_tracking(
 
         # Update last_location from most recent event if Ship24 didn't provide it
         if not db_package.last_location:
+            # First try to find an event with a delivery location
             latest_event = db.query(DBTrackingEvent).filter(
                 DBTrackingEvent.package_id == package_id,
-                DBTrackingEvent.location != None,
-                DBTrackingEvent.location != ''
+                DBTrackingEvent.delivery_location_id != None
             ).order_by(DBTrackingEvent.timestamp.desc()).first()
 
-            if latest_event and latest_event.location:
-                db_package.last_location = latest_event.location
-                db.commit()
-                db.refresh(db_package)
-                print(f"DEBUG: Set last_location to most recent event location: {latest_event.location}")
+            if latest_event:
+                # Get delivery location name
+                delivery_location = db.query(DBDeliveryLocation).filter(
+                    DBDeliveryLocation.id == latest_event.delivery_location_id
+                ).first()
+                if delivery_location:
+                    db_package.last_location = delivery_location.name
+                    db.commit()
+                    db.refresh(db_package)
+                    print(f"DEBUG: Set last_location to delivery location: {delivery_location.name}")
+            else:
+                # Fall back to courier location
+                latest_event = db.query(DBTrackingEvent).filter(
+                    DBTrackingEvent.package_id == package_id,
+                    DBTrackingEvent.location != None,
+                    DBTrackingEvent.location != ''
+                ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+                if latest_event and latest_event.location:
+                    db_package.last_location = latest_event.location
+                    db.commit()
+                    db.refresh(db_package)
+                    print(f"DEBUG: Set last_location to most recent event location: {latest_event.location}")
 
         # Trigger background geocoding for new locations
         if new_locations:
@@ -305,8 +339,27 @@ async def get_package_locations(
     # Build response
     locations = []
     for event in events:
-        # Get location data if available
+        # Get location data - prioritize delivery location if set
         location_data = None
+
+        if event.delivery_location_id:
+            # Use delivery location data
+            delivery_location = db.query(DBDeliveryLocation).filter(
+                DBDeliveryLocation.id == event.delivery_location_id
+            ).first()
+            if delivery_location:
+                locations.append(GeocodedLocation(
+                    event_id=event.id,
+                    location_string=delivery_location.name,
+                    latitude=delivery_location.latitude,
+                    longitude=delivery_location.longitude,
+                    display_name=delivery_location.display_name,
+                    timestamp=event.timestamp,
+                    status=event.status
+                ))
+                continue
+
+        # Otherwise use courier location data
         if event.location_id:
             location_data = db.query(DBLocation).filter(
                 DBLocation.location_string == event.location_id

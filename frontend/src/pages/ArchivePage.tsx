@@ -97,7 +97,7 @@ const ArchivePage: React.FC = () => {
   const { refresh: refreshTracking } = useTracking();
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingPackage, setEditingPackage] = useState<{ id: string; note: string } | null>(null);
+  const [editingPackage, setEditingPackage] = useState<{ id: string; note: string; delivery_location_id?: string } | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; packageId: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -146,15 +146,15 @@ const ArchivePage: React.FC = () => {
     }
   };
 
-  const handleEdit = (id: string, note: string) => {
+  const handleEdit = (id: string, note: string, deliveryLocationId?: string) => {
     handleMenuClose();
-    setEditingPackage({ id, note });
+    setEditingPackage({ id, note, delivery_location_id: deliveryLocationId });
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = async (note: string) => {
+  const handleSaveEdit = async (note: string, deliveryLocationId?: string | null) => {
     if (!editingPackage) return;
-    await updatePackage(editingPackage.id, { note });
+    await updatePackage(editingPackage.id, { note, delivery_location_id: deliveryLocationId });
     setEditingPackage(null);
   };
 
@@ -330,7 +330,7 @@ const ArchivePage: React.FC = () => {
               </ListItemIcon>
               <ListItemText>Refresh Tracking</ListItemText>
             </MenuItem>,
-            <MenuItem key="edit" onClick={() => handleEdit(pkg.id, pkg.note || '')}>
+            <MenuItem key="edit" onClick={() => handleEdit(pkg.id, pkg.note || '', pkg.delivery_location_id)}>
               <ListItemIcon>
                 <img src={editImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
               </ListItemIcon>
@@ -355,6 +355,7 @@ const ArchivePage: React.FC = () => {
       <EditPackageDialog
         open={editDialogOpen}
         initialNote={editingPackage?.note || ''}
+        initialDeliveryLocationId={editingPackage?.delivery_location_id || ''}
         onClose={() => {
           setEditDialogOpen(false);
           setEditingPackage(null);

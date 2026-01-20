@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 import re
-from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation
+from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation, DBDeliveryLocation
 from app.models import Package, PackageCreate, PackageUpdate, TrackingEvent
 from app.api.auth import get_current_user
 from app.services.ship24_service import Ship24Service, Ship24Error
@@ -62,7 +62,8 @@ async def create_package(
         user_id=current_user.id,
         tracking_number=package.tracking_number,
         courier=package.courier,
-        note=package.note
+        note=package.note,
+        delivery_location_id=package.delivery_location_id
     )
 
     # Try to fetch tracking data from Ship24
@@ -89,7 +90,8 @@ async def create_package(
         if result["status"] == PackageStatus.DELIVERED:
             db_package.delivered_at = datetime.now()
 
-        # Save tracking events
+        # Save tracking events initially
+        delivered_event_id = None
         for event_data in result["events"]:
             location_str = event_data.get("location")
 
@@ -97,6 +99,10 @@ async def create_package(
             if not location_str:
                 description = event_data.get("description", "")
                 location_str = extract_location_from_description(description)
+
+            # Clean up location string - convert string "null" to None
+            if location_str and location_str.lower() == "null":
+                location_str = None
 
             # Ensure location exists in locations table
             if location_str:
@@ -116,8 +122,9 @@ async def create_package(
                     db.add(new_location)
                     db.flush()  # Flush to make it available for the event
 
+            event_id = str(uuid.uuid4())
             db_event = DBTrackingEvent(
-                id=str(uuid.uuid4()),
+                id=event_id,
                 package_id=package_id,
                 status=event_data["status"],
                 location=location_str,
@@ -129,6 +136,19 @@ async def create_package(
             )
             db.add(db_event)
 
+            # Track delivered event for later processing
+            if event_data["status"] == PackageStatus.DELIVERED:
+                delivered_event_id = event_id
+
+        # Apply delivery location if package is delivered and has delivery_location_id
+        if delivered_event_id and db_package.delivery_location_id:
+            # Update the delivered event to reference the delivery location
+            delivered_event = db.query(DBTrackingEvent).filter(
+                DBTrackingEvent.id == delivered_event_id
+            ).first()
+            if delivered_event:
+                delivered_event.delivery_location_id = db_package.delivery_location_id
+
     except Ship24Error as e:
         # If Ship24 fails, still save the package without tracking data
         print(f"Failed to fetch tracking data: {e}")
@@ -139,16 +159,33 @@ async def create_package(
 
     # Update last_location from most recent event if Ship24 didn't provide it
     if not db_package.last_location:
+        # First try to find an event with a delivery location
         latest_event = db.query(DBTrackingEvent).filter(
             DBTrackingEvent.package_id == package_id,
-            DBTrackingEvent.location != None,
-            DBTrackingEvent.location != ''
+            DBTrackingEvent.delivery_location_id != None
         ).order_by(DBTrackingEvent.timestamp.desc()).first()
 
-        if latest_event and latest_event.location:
-            db_package.last_location = latest_event.location
-            db.commit()
-            db.refresh(db_package)
+        if latest_event:
+            # Get delivery location name
+            delivery_location = db.query(DBDeliveryLocation).filter(
+                DBDeliveryLocation.id == latest_event.delivery_location_id
+            ).first()
+            if delivery_location:
+                db_package.last_location = delivery_location.name
+                db.commit()
+                db.refresh(db_package)
+        else:
+            # Fall back to courier location
+            latest_event = db.query(DBTrackingEvent).filter(
+                DBTrackingEvent.package_id == package_id,
+                DBTrackingEvent.location != None,
+                DBTrackingEvent.location != ''
+            ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+            if latest_event and latest_event.location:
+                db_package.last_location = latest_event.location
+                db.commit()
+                db.refresh(db_package)
 
     return db_package
 
@@ -194,6 +231,38 @@ async def update_package(
         db_package.note = package_update.note
     if package_update.archived is not None:
         db_package.archived = package_update.archived
+
+    # Handle delivery_location_id update
+    # Check if delivery_location_id was provided in the update (even if None/null to clear it)
+    delivery_location_changed = False
+    update_dict = package_update.model_dump(exclude_unset=True)
+    if 'delivery_location_id' in update_dict:
+        new_value = package_update.delivery_location_id
+        delivery_location_changed = db_package.delivery_location_id != new_value
+        db_package.delivery_location_id = new_value
+
+    # If package is delivered and delivery location was changed, update the delivered event and last_location
+    if delivery_location_changed and db_package.last_status == PackageStatus.DELIVERED:
+        # Find the most recent DELIVERED event
+        delivered_event = db.query(DBTrackingEvent).filter(
+            DBTrackingEvent.package_id == package_id,
+            DBTrackingEvent.status == PackageStatus.DELIVERED
+        ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+        if delivered_event:
+            # Set or clear the delivery_location_id on the event
+            delivered_event.delivery_location_id = db_package.delivery_location_id
+
+            # Update last_location to match
+            if db_package.delivery_location_id:
+                delivery_location = db.query(DBDeliveryLocation).filter(
+                    DBDeliveryLocation.id == db_package.delivery_location_id
+                ).first()
+                if delivery_location:
+                    db_package.last_location = delivery_location.name
+            else:
+                # Delivery location was cleared - fall back to courier location
+                db_package.last_location = delivered_event.location
 
     db.commit()
     db.refresh(db_package)
