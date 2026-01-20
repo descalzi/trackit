@@ -29,11 +29,11 @@ const ErrorDialog: React.FC<ErrorDialogProps> = ({
         {title}
       </DialogTitle>
       <DialogContent>
-        <Stack spacing={1}>
+        <Stack spacing={2} width="100%"  >
           <img
           src={packageErrorImage}
           alt=""
-          style={{ height: '32px', width: '32px', objectFit: 'contain' }}
+          style={{ height: '80px', width: '80px', objectFit: 'contain', alignSelf: 'center' }}
         />
         <Typography sx={{ whiteSpace: 'pre-line' }}>
           {message}

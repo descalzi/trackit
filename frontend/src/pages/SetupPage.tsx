@@ -12,7 +12,6 @@ import {
   TableHead,
   TableRow,
   IconButton,
-  Tooltip,
   TextField,
   Chip,
   FormControlLabel,
@@ -22,19 +21,26 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   CheckCircle,
   Error as ErrorIcon,
-  Refresh as RefreshIcon,
   Edit as EditIcon,
   Save as SaveIcon,
   Close as CloseIcon,
   ArrowBack,
+  MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
 import { apiClient } from '../api/client';
 import { LocationAdmin, DeliveryLocation } from '../types';
 import refreshImage from '../assets/refresh.png';
+import editImage from '../assets/edit.png';
+import deleteImage from '../assets/delete.png';
+import mapImage from '../assets/map.png';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -62,6 +68,8 @@ const SetupPage: React.FC = () => {
   const [geocoding, setGeocoding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deliveryMenuAnchor, setDeliveryMenuAnchor] = useState<{ element: HTMLElement; locationId: string } | null>(null);
+  const [locationsMenuAnchor, setLocationsMenuAnchor] = useState<{ element: HTMLElement; locationString: string } | null>(null);
 
   const fetchLocations = async () => {
     setLoading(true);
@@ -287,28 +295,20 @@ const SetupPage: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenEditDialog(location)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteLocation(location.id)}
-                          disabled={deleting === location.id}
-                          color="error"
-                        >
-                          {deleting === location.id ? (
-                            <CircularProgress size={20} />
-                          ) : (
-                            <CloseIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Tooltip>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeliveryMenuAnchor({ element: e.currentTarget, locationId: location.id });
+                        }}
+                        disabled={deleting === location.id}
+                      >
+                        {deleting === location.id ? (
+                          <CircularProgress size={20} />
+                        ) : (
+                          <MoreVertIcon />
+                        )}
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -316,6 +316,56 @@ const SetupPage: React.FC = () => {
             </Table>
           </TableContainer>
         )}
+
+        {/* Delivery Location Actions Menu */}
+        <Menu
+          anchorEl={deliveryMenuAnchor?.element}
+          open={Boolean(deliveryMenuAnchor)}
+          onClose={() => setDeliveryMenuAnchor(null)}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+        >
+          {deliveryMenuAnchor && (() => {
+            const location = deliveryLocations.find(l => l.id === deliveryMenuAnchor.locationId);
+            if (!location) return null;
+
+            return [
+              <MenuItem key="view-map" onClick={() => {
+                window.open(`https://www.google.com/maps?q=${location.latitude},${location.longitude}`, '_blank');
+                setDeliveryMenuAnchor(null);
+              }}>
+                <ListItemIcon>
+                  <img src={mapImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                </ListItemIcon>
+                <ListItemText>View in Map</ListItemText>
+              </MenuItem>,
+              <MenuItem key="edit" onClick={() => {
+                handleOpenEditDialog(location);
+                setDeliveryMenuAnchor(null);
+              }}>
+                <ListItemIcon>
+                  <img src={editImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                </ListItemIcon>
+                <ListItemText>Edit</ListItemText>
+              </MenuItem>,
+              <MenuItem key="delete" onClick={() => {
+                handleDeleteLocation(location.id);
+                setDeliveryMenuAnchor(null);
+              }}>
+                <ListItemIcon>
+                  <img src={deleteImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>,
+            ];
+          })()}
+        </Menu>
 
         {/* Add/Edit Delivery Location Dialog */}
         <Dialog open={showAddDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -425,7 +475,9 @@ const SetupPage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {locations.map((location) => (
+              {locations
+                .sort((a, b) => a.location_string.localeCompare(b.location_string))
+                .map((location) => (
                 <TableRow
                   key={location.location_string}
                   sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
@@ -521,19 +573,20 @@ const SetupPage: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Retry geocoding">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRetry(location.location_string)}
-                        disabled={retryingLocation === location.location_string}
-                      >
-                        {retryingLocation === location.location_string ? (
-                          <CircularProgress size={20} />
-                        ) : (
-                          <RefreshIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocationsMenuAnchor({ element: e.currentTarget, locationString: location.location_string });
+                      }}
+                      disabled={retryingLocation === location.location_string}
+                    >
+                      {retryingLocation === location.location_string ? (
+                        <CircularProgress size={20} />
+                      ) : (
+                        <MoreVertIcon />
+                      )}
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))}
@@ -541,6 +594,55 @@ const SetupPage: React.FC = () => {
           </Table>
         </TableContainer>
       )}
+
+      {/* Locations Editor Actions Menu */}
+      <Menu
+        anchorEl={locationsMenuAnchor?.element}
+        open={Boolean(locationsMenuAnchor)}
+        onClose={() => setLocationsMenuAnchor(null)}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+      >
+        {locationsMenuAnchor && (() => {
+          const location = locations.find(l => l.location_string === locationsMenuAnchor.locationString);
+          if (!location) return null;
+
+          const menuItems = [
+            <MenuItem key="retry" onClick={() => {
+              handleRetry(location.location_string);
+              setLocationsMenuAnchor(null);
+            }}>
+              <ListItemIcon>
+                <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+              </ListItemIcon>
+              <ListItemText>Retry Geocoding</ListItemText>
+            </MenuItem>,
+          ];
+
+          // Only show "View in Map" if location has coordinates
+          if (location.latitude && location.longitude) {
+            menuItems.unshift(
+              <MenuItem key="view-map" onClick={() => {
+                window.open(`https://www.google.com/maps?q=${location.latitude},${location.longitude}`, '_blank');
+                setLocationsMenuAnchor(null);
+              }}>
+                <ListItemIcon>
+                  <img src={mapImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
+                </ListItemIcon>
+                <ListItemText>View in Map</ListItemText>
+              </MenuItem>
+            );
+          }
+
+          return menuItems;
+        })()}
+      </Menu>
 
           {loading && locations.length > 0 && (
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

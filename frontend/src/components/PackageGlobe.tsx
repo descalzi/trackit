@@ -13,69 +13,12 @@ interface GlobePoint extends GeocodedLocation {
   color?: string;
 }
 
-interface GlobeArc {
-  startLat: number;
-  startLng: number;
-  endLat: number;
-  endLng: number;
+interface GlobePath {
+  coords: Array<[number, number]>; // Array of [lat, lng] pairs
   color?: string;
-  altitude?: number;
   stroke?: number;
+  label?: string;
 }
-
-/**
- * Calculate great circle distance between two points in degrees
- */
-const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const toRad = (deg: number) => deg * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return c * 180 / Math.PI; // Return distance in degrees
-};
-
-/**
- * Calculate arc altitude based on distance
- * Longer distances need higher arcs to stay above globe surface
- */
-const calculateArcAltitude = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const distance = calculateDistance(lat1, lon1, lat2, lon2);
-
-  // Use very low altitude for short distances (city-level movements)
-  // Scale exponentially so short distances stay close to surface
-  if (distance < 1) {
-    // Within ~111km: very low arc (0.005 to 0.02)
-    return 0.005 + distance * 0.015;
-  } else if (distance < 10) {
-    // Regional travel ~111km to ~1,110km: low to medium arc (0.02 to 0.1)
-    return 0.02 + ((distance - 1) / 9) * 0.08;
-  } else {
-    // Long distance travel: higher arc (0.1 to 0.5)
-    return Math.min(0.5, 0.1 + ((distance - 10) / 170) * 0.4);
-  }
-};
-
-/**
- * Calculate arc stroke width based on distance
- * Short distances need thinner lines, long distances can be thicker
- */
-const calculateArcStroke = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const distance = calculateDistance(lat1, lon1, lat2, lon2);
-
-  if (distance < 1) {
-    // City-level: very thin (0.15 to 0.25)
-    return 0.10 + distance * 0.1;
-  } else if (distance < 10) {
-    // Regional: thin to medium (0.25 to 0.5)
-    return 0.15 + ((distance - 1) / 9) * 0.25;
-  } else {
-    // Long distance: medium to thick (0.5 to 0.8)
-    return Math.min(0.7, 0.5 + ((distance - 10) / 170) * 0.3);
-  }
-};
 
 /**
  * PackageGlobe component - 3D globe visualization of package journey
@@ -86,7 +29,7 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [locations, setLocations] = useState<GlobePoint[]>([]);
-  const [arcs, setArcs] = useState<GlobeArc[]>([]);
+  const [paths, setPaths] = useState<GlobePath[]>([]);
   const theme = useTheme();
 
   // Get color based on package status
@@ -130,26 +73,31 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
 
         setLocations(enrichedLocations);
 
-        // Create arcs between consecutive locations
-        const newArcs: GlobeArc[] = [];
+        // Create paths between consecutive locations
+        const newPaths: GlobePath[] = [];
         for (let i = 0; i < enrichedLocations.length - 1; i++) {
           const start = enrichedLocations[i];
           const end = enrichedLocations[i + 1];
 
           if (start.latitude && start.longitude && end.latitude && end.longitude) {
-            newArcs.push({
-              startLat: start.latitude,
-              startLng: start.longitude,
-              endLat: end.latitude,
-              endLng: end.longitude,
+            // Create label showing start -> end location
+            const startName = start.location_string || 'Unknown';
+            const endName = end.location_string || 'Unknown';
+            const label = `${startName} → ${endName}`;
+
+            newPaths.push({
+              coords: [
+                [start.latitude, start.longitude],
+                [end.latitude, end.longitude]
+              ],
               color: alpha(theme.palette.primary.main, 0.8),
-              altitude: calculateArcAltitude(start.latitude, start.longitude, end.latitude, end.longitude),
-              stroke: calculateArcStroke(start.latitude, start.longitude, end.latitude, end.longitude),
+              stroke: 8,
+              label: label
             });
           }
         }
 
-        setArcs(newArcs);
+        setPaths(newPaths);
       } catch (err) {
         console.error('Failed to load locations:', err);
         setError(err instanceof Error ? err.message : 'Failed to load locations');
@@ -179,28 +127,31 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
       .globeTileEngineUrl((x: number, y: number, l: number) =>
         `https://tile.openstreetmap.org/${l}/${x}/${y}.png`
       )
+      // .bumpImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png')
       .backgroundColor(theme.palette.mode === 'dark' ? '#0a0a0a' : '#ffffff')
       .width(globeRef.current.clientWidth)
       .height(500)
       // Location markers - only show pins when there's exactly one location
       // For multiple locations, the arcs will show the journey
-      .pointsData(locations.length === 1 ? locations : [])
-      .pointLat('latitude')
-      .pointLng('longitude')
-      .pointColor((d: any) => d.color)
-      .pointAltitude(0.01)
-      .pointRadius(0.3)
-      // Arcs - show package journey between locations
-      .arcsData(arcs)
-      .arcStartLat('startLat')
-      .arcStartLng('startLng')
-      .arcEndLat('endLat')
-      .arcEndLng('endLng')
-      .arcColor((d: any) => d.color)
-      .arcStroke((d: any) => d.stroke || 0.5)
-      .arcAltitude((d: any) => d.altitude || 0.1)
+      // .pointsData(locations.length === 1 ? locations : [])
+      // .pointLat('latitude')
+      // .pointLng('longitude')
+      // .pointColor((d: any) => d.color)
+      // .pointAltitude(0.01)
+      // .pointRadius(0.3)
+      // Paths - show package journey between locations
+      .pathsData(paths)
+      .pathPoints('coords')
+      .pathPointLat((p: any) => p[0])
+      .pathPointLng((p: any) => p[1])
+      .pathColor((d: any) => d.color)
+      .pathStroke((d: any) => d.stroke || 8)
+      .pathLabel((d: any) => d.label || '')
+      // .pathDashLength(0.9)
+      // .pathDashGap(0.1)
+      // .pathDashAnimateTime(20000)
       // Controls
-      .enablePointerInteraction(true);
+      // .enablePointerInteraction(true);
 
     // Disable auto-rotate - keep globe still
     globe.controls().autoRotate = false;
@@ -236,7 +187,7 @@ const PackageGlobe: React.FC<PackageGlobeProps> = ({ packageId }) => {
         globeInstance.current._destructor();
       }
     };
-  }, [locations, arcs, loading, error, theme]);
+  }, [locations, paths, loading, error, theme]);
 
   if (loading) {
     return (
