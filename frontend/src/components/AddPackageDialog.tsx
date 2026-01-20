@@ -100,6 +100,15 @@ const AddPackageDialog: React.FC<AddPackageDialogProps> = ({ open, onClose, onAd
             onChange={(e) => setCourier(e.target.value)}
             helperText="Leave blank for auto-detection"
             fullWidth
+            SelectProps={{
+              MenuProps: {
+                PaperProps: {
+                  style: {
+                    maxHeight: 300,
+                  },
+                },
+              },
+            }}
           >
             <MenuItem value="">Auto Detect</MenuItem>
             {couriers

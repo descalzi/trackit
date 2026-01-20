@@ -26,12 +26,17 @@ import {
   Edit as EditIcon,
   Save as SaveIcon,
   Close as CloseIcon,
+  ArrowBack,
 } from '@mui/icons-material';
 import { apiClient } from '../api/client';
 import { LocationAdmin } from '../types';
 import refreshImage from '../assets/refresh.png';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
-const AdminPage: React.FC = () => {
+const SetupPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [locations, setLocations] = useState<LocationAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,11 +107,38 @@ const AdminPage: React.FC = () => {
     );
   }
 
+  // Non-admin users see a simple message
+  if (!user?.is_admin) {
+    return (
+      <Box>
+        <Button
+          startIcon={<ArrowBack />}
+          onClick={() => navigate('/')}
+          sx={{ mb: 2 }}
+        >
+          Back to Dashboard
+        </Button>
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" color="text.secondary">
+            Nothing to setup yet
+          </Typography>
+        </Paper>
+      </Box>
+    );
+  }
+
   return (
     <Box>
+      <Button
+              startIcon={<ArrowBack />}
+              onClick={() => navigate('/')}
+              sx={{ mb: 2 }}
+            >
+              Back to Dashboard
+            </Button>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" fontWeight={600}>
-          Admin - Locations
+          Locations Editor
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <FormControlLabel
@@ -287,4 +319,4 @@ const AdminPage: React.FC = () => {
   );
 };
 
-export default AdminPage;
+export default SetupPage;

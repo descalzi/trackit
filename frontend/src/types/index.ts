@@ -4,6 +4,7 @@ export interface User {
   email: string;
   name: string;
   picture?: string;
+  is_admin: boolean;
 }
 
 export interface AuthResponse {

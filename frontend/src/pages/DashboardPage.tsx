@@ -236,7 +236,7 @@ const DashboardPage: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1" fontWeight={600}>
-          My Packages
+          Packages
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
@@ -245,14 +245,14 @@ const DashboardPage: React.FC = () => {
             onClick={handleRefreshAll}
             disabled={refreshingId === 'all' || packages.length === 0}
           >
-            Refresh All
+            Refresh
           </Button>
           <Button
             variant="contained"
             startIcon={<img src={packageAddImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />}
             onClick={() => setDialogOpen(true)}
           >
-            Add Package
+            Add
           </Button>
         </Box>
       </Box>
@@ -453,21 +453,6 @@ const DashboardPage: React.FC = () => {
           ];
         })()}
       </Menu>
-
-      {/* Floating Action Button for mobile */}
-      <Fab
-        color="primary"
-        aria-label="add"
-        sx={{
-          position: 'fixed',
-          bottom: 16,
-          right: 16,
-          display: { xs: 'flex', md: 'none' },
-        }}
-        onClick={() => setDialogOpen(true)}
-      >
-        <img src={packageAddImage} alt="" style={{ height: '24px', width: '24px', objectFit: 'contain' }} />
-      </Fab>
 
       <AddPackageDialog
         open={dialogOpen}

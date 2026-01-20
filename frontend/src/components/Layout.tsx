@@ -145,15 +145,15 @@ const Layout: React.FC = () => {
             </ListItem>
 
             <ListItem disablePadding>
-              <ListItemButton onClick={() => handleNavigation('/admin')}>
+              <ListItemButton onClick={() => handleNavigation('/setup')}>
                 <ListItemIcon>
                   <img
                     src={editImage}
-                    alt="Admin"
+                    alt="Setup"
                     style={{ height: '32px', width: '32px', objectFit: 'contain' }}
                   />
                 </ListItemIcon>
-                <ListItemText primary="Admin" />
+                <ListItemText primary="Setup" />
               </ListItemButton>
             </ListItem>
           </List>

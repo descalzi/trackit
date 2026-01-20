@@ -12,7 +12,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import PackageDetailPage from './pages/PackageDetailPage';
 import ArchivePage from './pages/ArchivePage';
-import AdminPage from './pages/AdminPage';
+import SetupPage from './pages/SetupPage';
 import logoImage from './assets/logo.png';
 import loadingGif from './assets/loading.gif';
 
@@ -100,7 +100,7 @@ const App: React.FC = () => {
                   <Route index element={<DashboardPage />} />
                   <Route path="package/:id" element={<PackageDetailPage />} />
                   <Route path="archive" element={<ArchivePage />} />
-                  <Route path="admin" element={<AdminPage />} />
+                  <Route path="setup" element={<SetupPage />} />
                 </Route>
 
                 {/* Fallback route */}

@@ -82,7 +82,8 @@ async def google_auth(auth_request: GoogleAuthRequest, db: Session = Depends(get
             id=db_user.id,
             email=db_user.email,
             name=db_user.name,
-            picture=db_user.picture
+            picture=db_user.picture,
+            is_admin=db_user.is_admin
         )
     )
 
@@ -94,5 +95,6 @@ async def get_current_user_info(current_user: DBUser = Depends(get_current_user)
         id=current_user.id,
         email=current_user.email,
         name=current_user.name,
-        picture=current_user.picture
+        picture=current_user.picture,
+        is_admin=current_user.is_admin
     )

@@ -35,6 +35,7 @@ class DBUser(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
     picture = Column(String, nullable=True)
+    is_admin = Column(Boolean, default=False, nullable=False)  # Admin flag (manually managed)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

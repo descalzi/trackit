@@ -16,6 +16,7 @@ class User(BaseModel):
     email: EmailStr
     name: str
     picture: Optional[str] = None
+    is_admin: bool = False
 
     class Config:
         from_attributes = True
