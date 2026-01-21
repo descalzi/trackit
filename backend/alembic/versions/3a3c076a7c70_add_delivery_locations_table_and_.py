@@ -41,15 +41,23 @@ def upgrade() -> None:
     op.create_index(op.f('ix_delivery_locations_user_id'), 'delivery_locations', ['user_id'], unique=False)
 
     # Add delivery_location_id column to packages table
-    op.add_column('packages', sa.Column('delivery_location_id', sa.String(), nullable=True))
-    op.create_foreign_key('fk_packages_delivery_location_id', 'packages', 'delivery_locations', ['delivery_location_id'], ['id'])
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table('packages', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('delivery_location_id', sa.String(), nullable=True))
+        batch_op.create_foreign_key(
+            'fk_packages_delivery_location_id',
+            'delivery_locations',
+            ['delivery_location_id'], ['id']
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # Remove delivery_location_id from packages
-    op.drop_constraint('fk_packages_delivery_location_id', 'packages', type_='foreignkey')
-    op.drop_column('packages', 'delivery_location_id')
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table('packages', schema=None) as batch_op:
+        batch_op.drop_constraint('fk_packages_delivery_location_id', type_='foreignkey')
+        batch_op.drop_column('delivery_location_id')
 
     # Drop delivery_locations table
     op.drop_index(op.f('ix_delivery_locations_user_id'), table_name='delivery_locations')

@@ -140,7 +140,12 @@ class DBTrackingEvent(Base):
 
 
 def init_db():
-    """Initialize database tables"""
+    """Initialize database tables
+
+    Note: With Alembic migrations, this is mainly kept for backwards compatibility.
+    The create_all() operation is idempotent - it only creates tables that don't exist.
+    Schema changes should be managed through Alembic migrations.
+    """
     Base.metadata.create_all(bind=engine)
 
 
