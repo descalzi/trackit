@@ -47,6 +47,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend application code
 COPY backend/app ./app
 
+# Copy Alembic migration files
+COPY backend/alembic ./alembic
+COPY backend/alembic.ini ./alembic.ini
+
 # Create data directory for SQLite database
 RUN mkdir -p /app/data
 
