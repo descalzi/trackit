@@ -12,6 +12,8 @@ from app.models import (
 from app.api.auth import get_current_user
 from app.services.ship24_service import Ship24Service, Ship24Error, Ship24RateLimitError, Ship24NotFoundError
 from app.services.geocoding_service import get_geocoding_service
+# Import the helper function from packages
+from app.api.packages import apply_delivery_location_override
 import uuid
 
 router = APIRouter()
@@ -140,7 +142,7 @@ async def refresh_tracking(
         # Update package with latest data
         db_package.ship24_tracker_id = result.get("tracker_id")
         db_package.last_status = result["status"]
-        db_package.last_location = result["location"]
+        # last_location_id will be set by the trigger after events are inserted
         db_package.last_updated = datetime.now()
 
         # Update shipment details
@@ -226,39 +228,17 @@ async def refresh_tracking(
                 print(f"DEBUG: Skipping duplicate event: {event_data.get('description')}")
 
         db.commit()
-        db.refresh(db_package)
 
-        # Update last_location from most recent event if Ship24 didn't provide it
-        if not db_package.last_location:
-            # First try to find an event with a delivery location
-            latest_event = db.query(DBTrackingEvent).filter(
-                DBTrackingEvent.package_id == package_id,
-                DBTrackingEvent.delivery_location_id != None
-            ).order_by(DBTrackingEvent.timestamp.desc()).first()
+        # Trigger will automatically set last_location_id based on most recent tracking event
+        # Refresh with joined location data
+        from sqlalchemy.orm import joinedload
+        db_package = db.query(DBPackage).options(
+            joinedload(DBPackage.last_location)
+        ).filter(DBPackage.id == package_id).first()
 
-            if latest_event:
-                # Get delivery location name
-                delivery_location = db.query(DBDeliveryLocation).filter(
-                    DBDeliveryLocation.id == latest_event.delivery_location_id
-                ).first()
-                if delivery_location:
-                    db_package.last_location = delivery_location.name
-                    db.commit()
-                    db.refresh(db_package)
-                    print(f"DEBUG: Set last_location to delivery location: {delivery_location.name}")
-            else:
-                # Fall back to courier location
-                latest_event = db.query(DBTrackingEvent).filter(
-                    DBTrackingEvent.package_id == package_id,
-                    DBTrackingEvent.location != None,
-                    DBTrackingEvent.location != ''
-                ).order_by(DBTrackingEvent.timestamp.desc()).first()
-
-                if latest_event and latest_event.location:
-                    db_package.last_location = latest_event.location
-                    db.commit()
-                    db.refresh(db_package)
-                    print(f"DEBUG: Set last_location to most recent event location: {latest_event.location}")
+        # Apply delivery location override for delivered packages
+        if db_package:
+            apply_delivery_location_override(db_package, db)
 
         # Trigger background geocoding for new locations
         if new_locations:

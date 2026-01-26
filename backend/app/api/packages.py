@@ -4,13 +4,52 @@ from typing import List, Optional
 from datetime import datetime
 import re
 from app.database import get_db, DBPackage, DBUser, DBTrackingEvent, PackageStatus, DBLocation, DBDeliveryLocation
-from app.models import Package, PackageCreate, PackageUpdate, TrackingEvent
+from app.models import Package, PackageCreate, PackageUpdate, TrackingEvent, LocationInfo
 from app.api.auth import get_current_user
 from app.services.ship24_service import Ship24Service, Ship24Error
 from app.services.geocoding_service import get_geocoding_service
 import uuid
 
 router = APIRouter()
+
+
+def apply_delivery_location_override(db_package: DBPackage, db: Session) -> None:
+    """
+    Override last_location with delivery location if package is delivered.
+
+    For delivered packages with a delivery_location_id, this function replaces
+    the courier location (from last_location) with the user's delivery location.
+    This ensures delivered packages show the final delivery address instead of
+    the last courier location.
+    """
+    if db_package.last_status == PackageStatus.DELIVERED and db_package.delivery_location_id:
+        # Find the most recent delivered event
+        delivered_event = db.query(DBTrackingEvent).filter(
+            DBTrackingEvent.package_id == db_package.id,
+            DBTrackingEvent.status == PackageStatus.DELIVERED
+        ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+        # If the delivered event has a delivery_location_id, use that instead of courier location
+        if delivered_event and delivered_event.delivery_location_id:
+            delivery_location = db.query(DBDeliveryLocation).filter(
+                DBDeliveryLocation.id == delivered_event.delivery_location_id
+            ).first()
+
+            if delivery_location:
+                # Override last_location with a DBLocation object that contains delivery location data
+                # Create an actual DBLocation instance (not persisted) for Pydantic serialization
+                mock_location = DBLocation(
+                    location_string=delivery_location.name,
+                    normalized_location=delivery_location.name,
+                    alias=None,
+                    latitude=delivery_location.latitude,
+                    longitude=delivery_location.longitude,
+                    display_name=delivery_location.display_name,
+                    country_code=delivery_location.country_code,
+                    geocoding_failed=False
+                )
+                db_package.last_location = mock_location
+                db_package.last_location_id = delivery_location.name  # Set to name for reference
 
 
 def extract_location_from_description(description: str) -> Optional[str]:
@@ -40,10 +79,19 @@ async def get_packages(
     db: Session = Depends(get_db)
 ):
     """Get all packages for the current user"""
-    packages = db.query(DBPackage).filter(
+    from sqlalchemy.orm import joinedload
+
+    packages = db.query(DBPackage).options(
+        joinedload(DBPackage.last_location)
+    ).filter(
         DBPackage.user_id == current_user.id,
         DBPackage.archived == archived
     ).all()
+
+    # Apply delivery location override for delivered packages
+    for package in packages:
+        apply_delivery_location_override(package, db)
+
     return packages
 
 
@@ -77,7 +125,7 @@ async def create_package(
         # Populate tracking data
         db_package.ship24_tracker_id = result.get("tracker_id")
         db_package.last_status = result["status"]
-        db_package.last_location = result["location"]
+        # last_location_id will be set by the trigger after events are inserted
         db_package.last_updated = datetime.now()
 
         # Populate shipment details
@@ -91,7 +139,7 @@ async def create_package(
             db_package.delivered_at = datetime.now()
 
         # Save tracking events initially
-        delivered_event_id = None
+        delivered_event = None
         for event_data in result["events"]:
             location_str = event_data.get("location")
 
@@ -136,18 +184,14 @@ async def create_package(
             )
             db.add(db_event)
 
-            # Track delivered event for later processing
+            # Track delivered event object for later processing
             if event_data["status"] == PackageStatus.DELIVERED:
-                delivered_event_id = event_id
+                delivered_event = db_event
 
         # Apply delivery location if package is delivered and has delivery_location_id
-        if delivered_event_id and db_package.delivery_location_id:
-            # Update the delivered event to reference the delivery location
-            delivered_event = db.query(DBTrackingEvent).filter(
-                DBTrackingEvent.id == delivered_event_id
-            ).first()
-            if delivered_event:
-                delivered_event.delivery_location_id = db_package.delivery_location_id
+        if delivered_event and db_package.delivery_location_id:
+            # Set delivery_location_id directly on the event object (already in session)
+            delivered_event.delivery_location_id = db_package.delivery_location_id
 
     except Ship24Error as e:
         # If Ship24 fails, still save the package without tracking data
@@ -157,35 +201,16 @@ async def create_package(
     db.commit()
     db.refresh(db_package)
 
-    # Update last_location from most recent event if Ship24 didn't provide it
-    if not db_package.last_location:
-        # First try to find an event with a delivery location
-        latest_event = db.query(DBTrackingEvent).filter(
-            DBTrackingEvent.package_id == package_id,
-            DBTrackingEvent.delivery_location_id != None
-        ).order_by(DBTrackingEvent.timestamp.desc()).first()
+    # Trigger will automatically set last_location_id based on most recent tracking event
+    # Refresh again to get the updated last_location_id and joined location data
+    from sqlalchemy.orm import joinedload
+    db_package = db.query(DBPackage).options(
+        joinedload(DBPackage.last_location)
+    ).filter(DBPackage.id == package_id).first()
 
-        if latest_event:
-            # Get delivery location name
-            delivery_location = db.query(DBDeliveryLocation).filter(
-                DBDeliveryLocation.id == latest_event.delivery_location_id
-            ).first()
-            if delivery_location:
-                db_package.last_location = delivery_location.name
-                db.commit()
-                db.refresh(db_package)
-        else:
-            # Fall back to courier location
-            latest_event = db.query(DBTrackingEvent).filter(
-                DBTrackingEvent.package_id == package_id,
-                DBTrackingEvent.location != None,
-                DBTrackingEvent.location != ''
-            ).order_by(DBTrackingEvent.timestamp.desc()).first()
-
-            if latest_event and latest_event.location:
-                db_package.last_location = latest_event.location
-                db.commit()
-                db.refresh(db_package)
+    # Apply delivery location override for delivered packages
+    if db_package:
+        apply_delivery_location_override(db_package, db)
 
     return db_package
 
@@ -197,13 +222,20 @@ async def get_package(
     db: Session = Depends(get_db)
 ):
     """Get a specific package by ID"""
-    package = db.query(DBPackage).filter(
+    from sqlalchemy.orm import joinedload
+
+    package = db.query(DBPackage).options(
+        joinedload(DBPackage.last_location)
+    ).filter(
         DBPackage.id == package_id,
         DBPackage.user_id == current_user.id
     ).first()
 
     if not package:
         raise HTTPException(status_code=404, detail="Package not found")
+
+    # Apply delivery location override for delivered packages
+    apply_delivery_location_override(package, db)
 
     return package
 
@@ -241,7 +273,8 @@ async def update_package(
         delivery_location_changed = db_package.delivery_location_id != new_value
         db_package.delivery_location_id = new_value
 
-    # If package is delivered and delivery location was changed, update the delivered event and last_location
+    # If package is delivered and delivery location was changed, update the delivered event
+    # The trigger will handle updating last_location_id automatically
     if delivery_location_changed and db_package.last_status == PackageStatus.DELIVERED:
         # Find the most recent DELIVERED event
         delivered_event = db.query(DBTrackingEvent).filter(
@@ -252,20 +285,21 @@ async def update_package(
         if delivered_event:
             # Set or clear the delivery_location_id on the event
             delivered_event.delivery_location_id = db_package.delivery_location_id
-
-            # Update last_location to match
-            if db_package.delivery_location_id:
-                delivery_location = db.query(DBDeliveryLocation).filter(
-                    DBDeliveryLocation.id == db_package.delivery_location_id
-                ).first()
-                if delivery_location:
-                    db_package.last_location = delivery_location.name
-            else:
-                # Delivery location was cleared - fall back to courier location
-                db_package.last_location = delivered_event.location
+            # Note: We don't need to manually update last_location_id here
+            # as the trigger will handle it when events change
 
     db.commit()
-    db.refresh(db_package)
+
+    # Refresh with joined location data
+    from sqlalchemy.orm import joinedload
+    db_package = db.query(DBPackage).options(
+        joinedload(DBPackage.last_location)
+    ).filter(DBPackage.id == package_id).first()
+
+    # Apply delivery location override for delivered packages
+    if db_package:
+        apply_delivery_location_override(db_package, db)
+
     return db_package
 
 

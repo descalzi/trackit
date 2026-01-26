@@ -50,6 +50,20 @@ class PackageUpdate(BaseModel):
     delivery_location_id: Optional[str] = None  # Target delivery location
 
 
+class LocationInfo(BaseModel):
+    """Location information for display"""
+    location_string: str
+    normalized_location: str
+    alias: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    display_name: Optional[str] = None
+    country_code: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class Package(PackageBase):
     """Package response model"""
     id: str
@@ -57,7 +71,8 @@ class Package(PackageBase):
     delivery_location_id: Optional[str] = None
     ship24_tracker_id: Optional[str] = None
     last_status: Optional[PackageStatus] = None
-    last_location: Optional[str] = None
+    last_location_id: Optional[str] = None
+    last_location: Optional[LocationInfo] = None  # Joined location data
     last_updated: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
     origin_country: Optional[str] = None

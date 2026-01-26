@@ -27,6 +27,17 @@ export enum PackageStatus {
   UNKNOWN = 'Unknown',
 }
 
+// Location Info types
+export interface LocationInfo {
+  location_string: string;
+  normalized_location: string;
+  alias?: string;
+  latitude?: number;
+  longitude?: number;
+  display_name?: string;
+  country_code?: string;
+}
+
 // Package types
 export interface Package {
   id: string;
@@ -37,7 +48,8 @@ export interface Package {
   delivery_location_id?: string;  // Target delivery location
   ship24_tracker_id?: string;
   last_status?: PackageStatus;
-  last_location?: string;
+  last_location_id?: string;
+  last_location?: LocationInfo;  // Joined location data
   last_updated?: string;
   delivered_at?: string;
   origin_country?: string;

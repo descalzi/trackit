@@ -280,7 +280,7 @@ const PackageDetailPage: React.FC = () => {
           {/* Last Location */}
           {packageData.last_location ? (
             <Typography variant="body1" >
-              📍 {packageData.last_location}
+              📍 {packageData.last_location.alias || packageData.last_location.location_string}
             </Typography>
           ) : null}
           </Box>

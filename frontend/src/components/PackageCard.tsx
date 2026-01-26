@@ -136,7 +136,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
 
         {pkg.last_location && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            📍 {pkg.last_location}
+            📍 {pkg.last_location.alias || pkg.last_location.location_string}
           </Typography>
         )}
 

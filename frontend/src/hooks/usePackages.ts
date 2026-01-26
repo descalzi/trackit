@@ -43,11 +43,17 @@ export const usePackages = (archived: boolean = false) => {
   };
 
   const archivePackage = async (id: string): Promise<Package> => {
-    return updatePackage(id, { archived: true });
+    const updated = await apiClient.packages.update(id, { archived: true });
+    // Remove from current list since it's now archived
+    setPackages(prev => prev.filter(pkg => pkg.id !== id));
+    return updated;
   };
 
   const unarchivePackage = async (id: string): Promise<Package> => {
-    return updatePackage(id, { archived: false });
+    const updated = await apiClient.packages.update(id, { archived: false });
+    // Remove from current list since it's no longer archived
+    setPackages(prev => prev.filter(pkg => pkg.id !== id));
+    return updated;
   };
 
   return {

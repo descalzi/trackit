@@ -29,12 +29,8 @@ import {
   MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
 import { usePackages } from '../hooks/usePackages';
-import { useTracking } from '../hooks/useTracking';
-import EditPackageDialog from '../components/EditPackageDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { PackageStatus } from '../types';
-import refreshImage from '../assets/refresh.png';
-import editImage from '../assets/edit.png';
 import archiveImage from '../assets/archive.png';
 import deleteImage from '../assets/delete.png';
 import { formatDistanceToNow } from 'date-fns';
@@ -93,11 +89,7 @@ const getStatusPriority = (status?: PackageStatus): number => {
 
 const ArchivePage: React.FC = () => {
   const navigate = useNavigate();
-  const { packages, loading, error, refresh, deletePackage, unarchivePackage, updatePackage } = usePackages(true);
-  const { refresh: refreshTracking } = useTracking();
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingPackage, setEditingPackage] = useState<{ id: string; note: string; delivery_location_id?: string } | null>(null);
+  const { packages, loading, error, deletePackage, unarchivePackage } = usePackages(true);
   const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; packageId: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -131,31 +123,6 @@ const ArchivePage: React.FC = () => {
 
   const handleMenuClose = () => {
     setMenuAnchor(null);
-  };
-
-  const handleRefreshPackage = async (id: string) => {
-    handleMenuClose();
-    setRefreshingId(id);
-    try {
-      await refreshTracking(id);
-      await refresh();
-    } catch (err) {
-      console.error('Failed to refresh package:', err);
-    } finally {
-      setRefreshingId(null);
-    }
-  };
-
-  const handleEdit = (id: string, note: string, deliveryLocationId?: string) => {
-    handleMenuClose();
-    setEditingPackage({ id, note, delivery_location_id: deliveryLocationId });
-    setEditDialogOpen(true);
-  };
-
-  const handleSaveEdit = async (note: string, deliveryLocationId?: string | null) => {
-    if (!editingPackage) return;
-    await updatePackage(editingPackage.id, { note, delivery_location_id: deliveryLocationId });
-    setEditingPackage(null);
   };
 
   const handleUnarchive = (id: string, note: string, trackingNumber: string) => {
@@ -277,7 +244,7 @@ const ArchivePage: React.FC = () => {
                   <TableCell>
                     {pkg.last_location && (
                       <Typography variant="body2">
-                        📍 {pkg.last_location}
+                        📍 {pkg.last_location.alias || pkg.last_location.location_string}
                       </Typography>
                     )}
                   </TableCell>
@@ -293,7 +260,6 @@ const ArchivePage: React.FC = () => {
                     <IconButton
                       size="small"
                       onClick={(e) => handleMenuOpen(e, pkg.id)}
-                      disabled={refreshingId === pkg.id}
                     >
                       <MoreVertIcon />
                     </IconButton>
@@ -324,18 +290,6 @@ const ArchivePage: React.FC = () => {
           if (!pkg) return null;
 
           return [
-            <MenuItem key="refresh" onClick={() => handleRefreshPackage(pkg.id)}>
-              <ListItemIcon>
-                <img src={refreshImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
-              </ListItemIcon>
-              <ListItemText>Refresh Tracking</ListItemText>
-            </MenuItem>,
-            <MenuItem key="edit" onClick={() => handleEdit(pkg.id, pkg.note || '', pkg.delivery_location_id)}>
-              <ListItemIcon>
-                <img src={editImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
-              </ListItemIcon>
-              <ListItemText>Edit</ListItemText>
-            </MenuItem>,
             <MenuItem key="unarchive" onClick={() => handleUnarchive(pkg.id, pkg.note || '', pkg.tracking_number)}>
               <ListItemIcon>
                 <img src={archiveImage} alt="" style={{ height: '20px', width: '20px', objectFit: 'contain' }} />
@@ -351,17 +305,6 @@ const ArchivePage: React.FC = () => {
           ];
         })()}
       </Menu>
-
-      <EditPackageDialog
-        open={editDialogOpen}
-        initialNote={editingPackage?.note || ''}
-        initialDeliveryLocationId={editingPackage?.delivery_location_id || ''}
-        onClose={() => {
-          setEditDialogOpen(false);
-          setEditingPackage(null);
-        }}
-        onSave={handleSaveEdit}
-      />
 
       <ConfirmDialog
         open={confirmDialog.open}

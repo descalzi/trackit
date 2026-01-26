@@ -351,7 +351,7 @@ const DashboardPage: React.FC = () => {
                   <TableCell>
                     {pkg.last_location && (
                       <Typography variant="body2">
-                        {pkg.last_location}
+                        {pkg.last_location.alias || pkg.last_location.location_string}
                       </Typography>
                     )}
                     {!pkg.last_location && (pkg.origin_country || pkg.destination_country) && (
