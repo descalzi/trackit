@@ -48,8 +48,7 @@ export interface Package {
   delivery_location_id?: string;  // Target delivery location
   ship24_tracker_id?: string;
   last_status?: PackageStatus;
-  last_location_id?: string;
-  last_location?: LocationInfo;  // Joined location data
+  last_location?: LocationInfo;  // Computed from tracking events or delivery location
   last_updated?: string;
   delivered_at?: string;
   origin_country?: string;

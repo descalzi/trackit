@@ -13,7 +13,7 @@ from app.api.auth import get_current_user
 from app.services.ship24_service import Ship24Service, Ship24Error, Ship24RateLimitError, Ship24NotFoundError
 from app.services.geocoding_service import get_geocoding_service
 # Import the helper function from packages
-from app.api.packages import apply_delivery_location_override
+from app.api.packages import compute_last_location
 import uuid
 
 router = APIRouter()
@@ -155,18 +155,6 @@ async def refresh_tracking(
         if result["status"] == PackageStatus.DELIVERED and not db_package.delivered_at:
             db_package.delivered_at = datetime.now()
 
-            # If package has a delivery location set, apply it to the delivered event
-            if db_package.delivery_location_id:
-                # Find the most recent DELIVERED event
-                delivered_event = db.query(DBTrackingEvent).filter(
-                    DBTrackingEvent.package_id == package_id,
-                    DBTrackingEvent.status == PackageStatus.DELIVERED
-                ).order_by(DBTrackingEvent.timestamp.desc()).first()
-
-                if delivered_event:
-                    # Set the delivery_location_id on the event
-                    delivered_event.delivery_location_id = db_package.delivery_location_id
-
         # Save new events (deduplicate by timestamp + description)
         print(f"DEBUG: Processing {len(result['events'])} events from Ship24")
         new_locations = set()
@@ -228,17 +216,10 @@ async def refresh_tracking(
                 print(f"DEBUG: Skipping duplicate event: {event_data.get('description')}")
 
         db.commit()
+        db.refresh(db_package)
 
-        # Trigger will automatically set last_location_id based on most recent tracking event
-        # Refresh with joined location data
-        from sqlalchemy.orm import joinedload
-        db_package = db.query(DBPackage).options(
-            joinedload(DBPackage.last_location)
-        ).filter(DBPackage.id == package_id).first()
-
-        # Apply delivery location override for delivered packages
-        if db_package:
-            apply_delivery_location_override(db_package, db)
+        # Compute last_location
+        db_package.last_location = compute_last_location(db_package, db)
 
         # Trigger background geocoding for new locations
         if new_locations:
@@ -319,27 +300,8 @@ async def get_package_locations(
     # Build response
     locations = []
     for event in events:
-        # Get location data - prioritize delivery location if set
+        # Get location data from courier tracking
         location_data = None
-
-        if event.delivery_location_id:
-            # Use delivery location data
-            delivery_location = db.query(DBDeliveryLocation).filter(
-                DBDeliveryLocation.id == event.delivery_location_id
-            ).first()
-            if delivery_location:
-                locations.append(GeocodedLocation(
-                    event_id=event.id,
-                    location_string=delivery_location.name,
-                    latitude=delivery_location.latitude,
-                    longitude=delivery_location.longitude,
-                    display_name=delivery_location.display_name,
-                    timestamp=event.timestamp,
-                    status=event.status
-                ))
-                continue
-
-        # Otherwise use courier location data
         if event.location_id:
             location_data = db.query(DBLocation).filter(
                 DBLocation.location_string == event.location_id
@@ -354,6 +316,31 @@ async def get_package_locations(
             timestamp=event.timestamp,
             status=event.status
         ))
+
+    # For delivered packages with a delivery location, add it as the final location
+    if db_package.last_status == PackageStatus.DELIVERED and db_package.delivery_location_id:
+        delivery_location = db.query(DBDeliveryLocation).filter(
+            DBDeliveryLocation.id == db_package.delivery_location_id
+        ).first()
+
+        if delivery_location and locations:
+            # Find the most recent delivered event timestamp
+            delivered_event = db.query(DBTrackingEvent).filter(
+                DBTrackingEvent.package_id == package_id,
+                DBTrackingEvent.status == PackageStatus.DELIVERED
+            ).order_by(DBTrackingEvent.timestamp.desc()).first()
+
+            if delivered_event:
+                # Replace the last location with delivery location
+                locations[-1] = GeocodedLocation(
+                    event_id=delivered_event.id,
+                    location_string=delivery_location.name,
+                    latitude=delivery_location.latitude,
+                    longitude=delivery_location.longitude,
+                    display_name=delivery_location.display_name,
+                    timestamp=delivered_event.timestamp,
+                    status=PackageStatus.DELIVERED
+                )
 
     # Get origin and destination country info
     origin = CountryLocation(

@@ -71,8 +71,7 @@ class Package(PackageBase):
     delivery_location_id: Optional[str] = None
     ship24_tracker_id: Optional[str] = None
     last_status: Optional[PackageStatus] = None
-    last_location_id: Optional[str] = None
-    last_location: Optional[LocationInfo] = None  # Joined location data
+    last_location: Optional[LocationInfo] = None  # Computed from tracking events or delivery location
     last_updated: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
     origin_country: Optional[str] = None

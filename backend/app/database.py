@@ -79,7 +79,6 @@ class DBPackage(Base):
     # Ship24 cached data
     ship24_tracker_id = Column(String, nullable=True)  # Ship24 tracker ID for caching
     last_status = Column(SQLEnum(PackageStatus), nullable=True)  # Cached status
-    last_location_id = Column(String, ForeignKey("locations.location_string"), nullable=True)  # FK to locations table
     last_updated = Column(DateTime, nullable=True)  # When tracking was last fetched
     delivered_at = Column(DateTime, nullable=True)  # Delivery timestamp
 
@@ -96,7 +95,6 @@ class DBPackage(Base):
     # Relationships
     user = relationship("DBUser", back_populates="packages")
     delivery_location = relationship("DBDeliveryLocation", back_populates="packages")
-    last_location = relationship("DBLocation", foreign_keys=[last_location_id])
     tracking_events = relationship("DBTrackingEvent", back_populates="package", cascade="all, delete-orphan")
 
 
@@ -127,7 +125,6 @@ class DBTrackingEvent(Base):
     status = Column(SQLEnum(PackageStatus), nullable=False)
     location = Column(String, nullable=True)  # Event location (keep for backward compatibility)
     location_id = Column(String, ForeignKey("locations.location_string"), nullable=True)  # FK to locations
-    delivery_location_id = Column(String, ForeignKey("delivery_locations.id"), nullable=True)  # FK to delivery_locations (for delivered packages)
     timestamp = Column(DateTime, nullable=False, index=True)  # Event timestamp from courier
     description = Column(Text, nullable=True)  # Event description
     courier_event_code = Column(String, nullable=True)  # Raw courier event code (status code)
@@ -137,7 +134,6 @@ class DBTrackingEvent(Base):
     # Relationships
     package = relationship("DBPackage", back_populates="tracking_events")
     location_ref = relationship("DBLocation", back_populates="tracking_events")
-    delivery_location_ref = relationship("DBDeliveryLocation")
 
 
 def init_db():

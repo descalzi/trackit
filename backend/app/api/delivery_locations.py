@@ -171,7 +171,7 @@ async def delete_delivery_location(
 ):
     """
     Delete a delivery location.
-    This will remove the delivery location reference from packages and tracking events.
+    This will remove the delivery location reference from packages.
     """
     # Get the location
     db_location = db.query(DBDeliveryLocation).filter(
@@ -182,31 +182,7 @@ async def delete_delivery_location(
     if not db_location:
         raise HTTPException(status_code=404, detail="Delivery location not found")
 
-    # Remove reference from tracking events
-    db.query(DBTrackingEvent).filter(
-        DBTrackingEvent.delivery_location_id == location_id
-    ).update({"delivery_location_id": None})
-
-    # For delivered packages that were using this location, clear delivery_location_id from events
-    # and update last_location_id to fall back to courier location
-    affected_packages = db.query(DBPackage).filter(
-        DBPackage.delivery_location_id == location_id,
-        DBPackage.last_status == PackageStatus.DELIVERED
-    ).all()
-
-    for package in affected_packages:
-        # Find the delivered event and clear its delivery_location_id
-        delivered_event = db.query(DBTrackingEvent).filter(
-            DBTrackingEvent.package_id == package.id,
-            DBTrackingEvent.status == PackageStatus.DELIVERED
-        ).order_by(DBTrackingEvent.timestamp.desc()).first()
-
-        if delivered_event:
-            delivered_event.delivery_location_id = None
-            # Manually update last_location_id to courier location since trigger only fires on INSERT
-            package.last_location_id = delivered_event.location_id
-
-    # Remove reference from packages
+    # Remove reference from packages (set to NULL)
     db.query(DBPackage).filter(
         DBPackage.delivery_location_id == location_id
     ).update({"delivery_location_id": None})
